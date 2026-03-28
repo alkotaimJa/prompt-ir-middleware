@@ -1,11 +1,14 @@
 package com.jawaher.GPT.config;
 
+import com.google.genai.Client;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.Assert;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -14,6 +17,15 @@ import java.util.concurrent.TimeUnit;
 
 @Configuration
 public class AIConfig {
+
+    @Bean
+    public Client googleGenAiClient(@Value("${spring.ai.google.genai.api-key:}") String apiKey) {
+        Assert.hasText(apiKey,
+                "Google Gemini API key must be configured. " +
+                "Set the GEMINI_KEY environment variable or the " +
+                "'spring.ai.google.genai.api-key' property.");
+        return Client.builder().apiKey(apiKey).build();
+    }
 
     @Bean("openAiChatClient")
     public ChatClient openAiChatClient(OpenAiChatModel openAiChatModel) {
