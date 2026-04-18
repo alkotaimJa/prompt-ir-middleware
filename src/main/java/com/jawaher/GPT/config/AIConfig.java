@@ -2,6 +2,7 @@ package com.jawaher.GPT.config;
 
 import com.google.genai.Client;
 import org.springframework.ai.anthropic.AnthropicChatModel;
+import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -33,8 +34,12 @@ public class AIConfig {
     }
 
     @Bean("claudeChatClient")
-    public ChatClient claudeChatClient(AnthropicChatModel anthropicChatModel) {
-        return ChatClient.builder(anthropicChatModel).build();
+    public ChatClient claudeChatClient(
+            AnthropicChatModel anthropicChatModel,
+            @Value("${spring.ai.anthropic.chat.options.model:claude-3-5-sonnet-latest}") String claudeModel) {
+        return ChatClient.builder(anthropicChatModel)
+                .defaultOptions(AnthropicChatOptions.builder().model(claudeModel).build())
+                .build();
     }
 
     @Bean("geminiChatClient")
