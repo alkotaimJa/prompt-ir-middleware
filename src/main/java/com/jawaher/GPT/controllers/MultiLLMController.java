@@ -21,11 +21,11 @@ public class MultiLLMController {
 
     @PostMapping("/chat/multi")
     public ResponseEntity<MultiLLMResponse> multiChat(@RequestBody ChatRequest chatRequest) {
-        return ResponseEntity.ok(multiLLMService.chat(chatRequest.getMessage()));
+        return ResponseEntity.ok(multiLLMService.chat(chatRequest));
     }
 
     @PostMapping("/chat/gemini")
     public ResponseEntity<String> geminiChat(@RequestBody ChatRequest chatRequest) {
-        return ResponseEntity.ok(multiLLMService.chatGeminiOnly(chatRequest.getMessage()));
+        return ResponseEntity.ok(multiLLMService.chatGeminiOnly(chatRequest));
     }
 }
