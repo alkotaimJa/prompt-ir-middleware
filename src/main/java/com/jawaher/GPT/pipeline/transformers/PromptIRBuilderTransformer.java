@@ -7,15 +7,15 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * T5 — Prompt IR Assembly (structural finalisation).
+ * T6 — Prompt IR Assembly (structural finalisation).
  * <p>
  * Ensures the {@link PromptIR} is fully populated before provider compilation.
- * Any field that is still {@code null} after T1–T4 is defaulted to an empty
+ * Any field that is still {@code null} after T1–T5 is defaulted to an empty
  * string, guaranteeing downstream transformers and compilers never encounter
  * {@code null} on mandatory fields.
  */
 @Component
-@Order(5)
+@Order(6)
 public class PromptIRBuilderTransformer implements PromptTransformer {
 
     @Override
@@ -28,6 +28,9 @@ public class PromptIRBuilderTransformer implements PromptTransformer {
         }
         if (ir.getRole() == null) {
             ir.setRole("");
+        }
+        if (ir.getDetectedRole() == null) {
+            ir.setDetectedRole("");
         }
         if (ir.getContextBlock() == null) {
             ir.setContextBlock("");

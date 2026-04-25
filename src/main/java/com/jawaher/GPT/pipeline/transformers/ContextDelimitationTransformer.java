@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
  * on the IR is left as {@code null}.
  */
 @Component
-@Order(4)
+@Order(5)
 public class ContextDelimitationTransformer implements PromptTransformer {
 
     private static final String CONTEXT_START = "### CONTEXT START ###";

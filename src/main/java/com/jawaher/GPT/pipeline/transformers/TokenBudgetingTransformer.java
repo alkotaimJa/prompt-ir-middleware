@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * T7 — Token Budgeting.
+ * T8 — Token Budgeting.
  * <p>
  * Estimates the token count of each compiled prompt using the heuristic
  * {@code characters / 4} and, if any provider's budget would be exceeded,
@@ -22,7 +22,7 @@ import java.util.Map;
  * restrictive budget in use is stored on the IR for downstream reference.
  */
 @Component
-@Order(7)
+@Order(8)
 public class TokenBudgetingTransformer implements PromptTransformer {
 
     private final Map<String, Integer> budgets;

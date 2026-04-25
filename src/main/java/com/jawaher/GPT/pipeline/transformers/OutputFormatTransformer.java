@@ -25,7 +25,7 @@ import java.util.Map;
  * </ul>
  */
 @Component
-@Order(3)
+@Order(4)
 public class OutputFormatTransformer implements PromptTransformer {
 
     private static final Map<String, String> FORMAT_DIRECTIVES = Map.of(
