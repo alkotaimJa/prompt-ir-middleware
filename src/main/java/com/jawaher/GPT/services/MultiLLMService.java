@@ -39,12 +39,15 @@ public class MultiLLMService {
     }
 
     public MultiLLMResponse chat(String message) {
-        CompletableFuture<String> gptFuture = CompletableFuture.supplyAsync(
-                () -> callGpt(message), llmTaskExecutor);
-        CompletableFuture<String> claudeFuture = CompletableFuture.supplyAsync(
-                () -> callClaude(message), llmTaskExecutor);
-        CompletableFuture<String> geminiFuture = CompletableFuture.supplyAsync(
-                () -> callGemini(message), llmTaskExecutor);
+        CompletableFuture<String> gptFuture = CompletableFuture
+                .supplyAsync(() -> callGpt(message), llmTaskExecutor)
+                .exceptionally(ex -> "GPT error: " + ex.getMessage());
+        CompletableFuture<String> claudeFuture = CompletableFuture
+                .supplyAsync(() -> callClaude(message), llmTaskExecutor)
+                .exceptionally(ex -> "Claude error: " + ex.getMessage());
+        CompletableFuture<String> geminiFuture = CompletableFuture
+                .supplyAsync(() -> callGemini(message), llmTaskExecutor)
+                .exceptionally(ex -> "Gemini error: " + ex.getMessage());
 
         CompletableFuture.allOf(gptFuture, claudeFuture, geminiFuture).join();
 
