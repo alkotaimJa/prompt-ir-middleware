@@ -8,6 +8,8 @@ import com.jawaher.GPT.pipeline.PromptPipeline;
 import com.jawaher.GPT.pipeline.compiler.AnthropicPromptCompiler;
 import com.jawaher.GPT.pipeline.compiler.GeminiPromptCompiler;
 import com.jawaher.GPT.pipeline.compiler.OpenAIPromptCompiler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,8 @@ import java.util.concurrent.Executor;
 
 @Service
 public class MultiLLMService {
+
+    private static final Logger log = LoggerFactory.getLogger(MultiLLMService.class);
 
     private final ChatClient openAiChatClient;
     private final ChatClient claudeChatClient;
@@ -46,13 +50,13 @@ public class MultiLLMService {
 
         CompletableFuture<String> gptFuture = CompletableFuture
                 .supplyAsync(() -> callGpt(gptCompiled), llmTaskExecutor)
-                .exceptionally(ex -> "GPT error: " + rootCauseMessage(ex));
+                .exceptionally(ex -> { log.error("GPT call failed", ex); return "GPT error: service temporarily unavailable"; });
         CompletableFuture<String> claudeFuture = CompletableFuture
                 .supplyAsync(() -> callClaude(claudeCompiled), llmTaskExecutor)
-                .exceptionally(ex -> "Claude error: " + rootCauseMessage(ex));
+                .exceptionally(ex -> { log.error("Claude call failed", ex); return "Claude error: service temporarily unavailable"; });
         CompletableFuture<String> geminiFuture = CompletableFuture
                 .supplyAsync(() -> callGemini(geminiCompiled), llmTaskExecutor)
-                .exceptionally(ex -> "Gemini error: " + rootCauseMessage(ex));
+                .exceptionally(ex -> { log.error("Gemini call failed", ex); return "Gemini error: service temporarily unavailable"; });
 
         CompletableFuture.allOf(gptFuture, claudeFuture, geminiFuture).join();
 
@@ -68,7 +72,8 @@ public class MultiLLMService {
             CompiledPrompt geminiCompiled = ir.getCompiledPrompts().get(GeminiPromptCompiler.PROVIDER_NAME);
             return callGemini(geminiCompiled);
         } catch (Exception ex) {
-            return "Gemini error: " + rootCauseMessage(ex);
+            log.error("Gemini call failed", ex);
+            return "Gemini error: service temporarily unavailable";
         }
     }
 
@@ -94,13 +99,5 @@ public class MultiLLMService {
                 .user(compiled.userText())
                 .call()
                 .content();
-    }
-
-    private static String rootCauseMessage(Throwable ex) {
-        Throwable cause = ex;
-        while (cause.getCause() != null) {
-            cause = cause.getCause();
-        }
-        return cause.getMessage();
     }
 }
