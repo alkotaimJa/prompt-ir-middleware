@@ -41,13 +41,13 @@ public class MultiLLMService {
     public MultiLLMResponse chat(String message) {
         CompletableFuture<String> gptFuture = CompletableFuture
                 .supplyAsync(() -> callGpt(message), llmTaskExecutor)
-                .exceptionally(ex -> "GPT error: " + ex.getMessage());
+                .exceptionally(ex -> "GPT error: " + rootCauseMessage(ex));
         CompletableFuture<String> claudeFuture = CompletableFuture
                 .supplyAsync(() -> callClaude(message), llmTaskExecutor)
-                .exceptionally(ex -> "Claude error: " + ex.getMessage());
+                .exceptionally(ex -> "Claude error: " + rootCauseMessage(ex));
         CompletableFuture<String> geminiFuture = CompletableFuture
                 .supplyAsync(() -> callGemini(message), llmTaskExecutor)
-                .exceptionally(ex -> "Gemini error: " + ex.getMessage());
+                .exceptionally(ex -> "Gemini error: " + rootCauseMessage(ex));
 
         CompletableFuture.allOf(gptFuture, claudeFuture, geminiFuture).join();
 
@@ -79,5 +79,13 @@ public class MultiLLMService {
                 .user(message)
                 .call()
                 .content();
+    }
+
+    private static String rootCauseMessage(Throwable ex) {
+        Throwable cause = ex;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause.getMessage();
     }
 }
