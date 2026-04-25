@@ -56,7 +56,8 @@ public class TokenBudgetingTransformer implements PromptTransformer {
         boolean truncationNeeded = false;
         for (Map.Entry<String, CompiledPrompt> entry : ir.getCompiledPrompts().entrySet()) {
             int providerBudget = budgets.getOrDefault(entry.getKey(), Integer.MAX_VALUE);
-            if (estimateTokens(entry.getValue().systemText() + entry.getValue().userText()) > providerBudget) {
+            String combinedText = entry.getValue().systemText() + entry.getValue().userText();
+            if (estimateTokens(combinedText) > providerBudget) {
                 truncationNeeded = true;
                 break;
             }

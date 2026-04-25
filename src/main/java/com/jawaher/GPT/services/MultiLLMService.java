@@ -50,13 +50,13 @@ public class MultiLLMService {
 
         CompletableFuture<String> gptFuture = CompletableFuture
                 .supplyAsync(() -> callGpt(gptCompiled), llmTaskExecutor)
-                .exceptionally(ex -> { log.error("GPT call failed", ex); return "GPT error: service temporarily unavailable"; });
+                .exceptionally(ex -> handleProviderError("GPT", ex));
         CompletableFuture<String> claudeFuture = CompletableFuture
                 .supplyAsync(() -> callClaude(claudeCompiled), llmTaskExecutor)
-                .exceptionally(ex -> { log.error("Claude call failed", ex); return "Claude error: service temporarily unavailable"; });
+                .exceptionally(ex -> handleProviderError("Claude", ex));
         CompletableFuture<String> geminiFuture = CompletableFuture
                 .supplyAsync(() -> callGemini(geminiCompiled), llmTaskExecutor)
-                .exceptionally(ex -> { log.error("Gemini call failed", ex); return "Gemini error: service temporarily unavailable"; });
+                .exceptionally(ex -> handleProviderError("Gemini", ex));
 
         CompletableFuture.allOf(gptFuture, claudeFuture, geminiFuture).join();
 
@@ -72,9 +72,13 @@ public class MultiLLMService {
             CompiledPrompt geminiCompiled = ir.getCompiledPrompts().get(GeminiPromptCompiler.PROVIDER_NAME);
             return callGemini(geminiCompiled);
         } catch (Exception ex) {
-            log.error("Gemini call failed", ex);
-            return "Gemini error: service temporarily unavailable";
+            return handleProviderError("Gemini", ex);
         }
+    }
+
+    private String handleProviderError(String providerName, Throwable ex) {
+        log.error("{} call failed", providerName, ex);
+        return providerName + " error: service temporarily unavailable";
     }
 
     private String callGpt(CompiledPrompt compiled) {
