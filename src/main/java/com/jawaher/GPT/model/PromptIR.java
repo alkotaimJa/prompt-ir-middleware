@@ -19,8 +19,11 @@ public class PromptIR {
     /** Scaffolded task instruction produced by T1 and optionally extended by T3. */
     private String taskInstruction;
 
-    /** Resolved persona / role string produced by T2. */
+    /** Resolved persona / role string produced by T3. */
     private String role;
+
+    /** Auto-detected role inferred from message content by T2; {@code null} when no pattern matched. */
+    private String detectedRole;
 
     /** Output-format identifier copied from the original request (e.g. "json"). */
     private String outputFormat;
@@ -73,6 +76,14 @@ public class PromptIR {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public String getDetectedRole() {
+        return detectedRole;
+    }
+
+    public void setDetectedRole(String detectedRole) {
+        this.detectedRole = detectedRole;
     }
 
     public String getOutputFormat() {

@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * T6 — Provider-Specific Prompt Compilation.
+ * T7 — Provider-Specific Prompt Compilation.
  * <p>
  * Iterates over every registered {@link ProviderPromptCompiler} and maps the
  * provider-neutral {@link PromptIR} into each provider's native prompt format.
@@ -19,7 +19,7 @@ import java.util.List;
  * {@link PromptIR#getCompiledPrompts()}, keyed by provider name.
  */
 @Component
-@Order(6)
+@Order(7)
 public class ProviderCompilationTransformer implements PromptTransformer {
 
     private final List<ProviderPromptCompiler> compilers;
