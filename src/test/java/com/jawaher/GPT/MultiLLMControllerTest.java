@@ -1,5 +1,6 @@
 package com.jawaher.GPT;
 
+import com.jawaher.GPT.DTO.ChatRequest;
 import com.jawaher.GPT.DTO.MultiLLMResponse;
 import com.jawaher.GPT.controllers.MultiLLMController;
 import com.jawaher.GPT.services.MultiLLMService;
@@ -10,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -27,7 +29,7 @@ class MultiLLMControllerTest {
     @Test
     void multiChat_returnsResponsesFromAllThreeModels() throws Exception {
         MultiLLMResponse mockResponse = new MultiLLMResponse("GPT answer", "Claude answer", "Gemini answer");
-        when(multiLLMService.chat("What is AI?")).thenReturn(mockResponse);
+        when(multiLLMService.chat(any(ChatRequest.class))).thenReturn(mockResponse);
 
         mockMvc.perform(post("/api/chat/multi")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -40,7 +42,7 @@ class MultiLLMControllerTest {
 
     @Test
     void multiChat_serviceThrowsException_returns500() throws Exception {
-        when(multiLLMService.chat("fail")).thenThrow(new RuntimeException("LLM unavailable"));
+        when(multiLLMService.chat(any(ChatRequest.class))).thenThrow(new RuntimeException("LLM unavailable"));
 
         mockMvc.perform(post("/api/chat/multi")
                         .contentType(MediaType.APPLICATION_JSON)

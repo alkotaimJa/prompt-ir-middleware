@@ -1,6 +1,15 @@
 package com.jawaher.GPT.services;
 
+import com.jawaher.GPT.DTO.ChatRequest;
 import com.jawaher.GPT.DTO.MultiLLMResponse;
+import com.jawaher.GPT.model.CompiledPrompt;
+import com.jawaher.GPT.model.PromptIR;
+import com.jawaher.GPT.pipeline.PromptPipeline;
+import com.jawaher.GPT.pipeline.compiler.AnthropicPromptCompiler;
+import com.jawaher.GPT.pipeline.compiler.GeminiPromptCompiler;
+import com.jawaher.GPT.pipeline.compiler.OpenAIPromptCompiler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -11,43 +20,43 @@ import java.util.concurrent.Executor;
 @Service
 public class MultiLLMService {
 
-    private static final String GPT_SYSTEM_PROMPT =
-            "You are a helpful assistant powered by OpenAI GPT. Provide a clear and concise response.";
-
-    private static final String CLAUDE_SYSTEM_PROMPT =
-            "You are Claude, a helpful AI assistant by Anthropic. " +
-            "Provide a thoughtful, nuanced, and well-reasoned response.";
-
-    private static final String GEMINI_SYSTEM_PROMPT =
-            "You are Gemini, a helpful AI assistant by Google. " +
-            "Provide an accurate, informative, and detailed response.";
+    private static final Logger log = LoggerFactory.getLogger(MultiLLMService.class);
 
     private final ChatClient openAiChatClient;
     private final ChatClient claudeChatClient;
     private final ChatClient geminiChatClient;
     private final Executor llmTaskExecutor;
+    private final PromptPipeline promptPipeline;
 
     public MultiLLMService(
             @Qualifier("openAiChatClient") ChatClient openAiChatClient,
             @Qualifier("claudeChatClient") ChatClient claudeChatClient,
             @Qualifier("geminiChatClient") ChatClient geminiChatClient,
-            @Qualifier("llmTaskExecutor") Executor llmTaskExecutor) {
+            @Qualifier("llmTaskExecutor") Executor llmTaskExecutor,
+            PromptPipeline promptPipeline) {
         this.openAiChatClient = openAiChatClient;
         this.claudeChatClient = claudeChatClient;
         this.geminiChatClient = geminiChatClient;
-        this.llmTaskExecutor = llmTaskExecutor;
+        this.llmTaskExecutor  = llmTaskExecutor;
+        this.promptPipeline   = promptPipeline;
     }
 
-    public MultiLLMResponse chat(String message) {
+    public MultiLLMResponse chat(ChatRequest request) {
+        PromptIR ir = promptPipeline.process(request);
+
+        CompiledPrompt gptCompiled    = ir.getCompiledPrompts().get(OpenAIPromptCompiler.PROVIDER_NAME);
+        CompiledPrompt claudeCompiled = ir.getCompiledPrompts().get(AnthropicPromptCompiler.PROVIDER_NAME);
+        CompiledPrompt geminiCompiled = ir.getCompiledPrompts().get(GeminiPromptCompiler.PROVIDER_NAME);
+
         CompletableFuture<String> gptFuture = CompletableFuture
-                .supplyAsync(() -> callGpt(message), llmTaskExecutor)
-                .exceptionally(ex -> "GPT error: " + rootCauseMessage(ex));
+                .supplyAsync(() -> callGpt(gptCompiled), llmTaskExecutor)
+                .exceptionally(ex -> handleProviderError("GPT", ex));
         CompletableFuture<String> claudeFuture = CompletableFuture
-                .supplyAsync(() -> callClaude(message), llmTaskExecutor)
-                .exceptionally(ex -> "Claude error: " + rootCauseMessage(ex));
+                .supplyAsync(() -> callClaude(claudeCompiled), llmTaskExecutor)
+                .exceptionally(ex -> handleProviderError("Claude", ex));
         CompletableFuture<String> geminiFuture = CompletableFuture
-                .supplyAsync(() -> callGemini(message), llmTaskExecutor)
-                .exceptionally(ex -> "Gemini error: " + rootCauseMessage(ex));
+                .supplyAsync(() -> callGemini(geminiCompiled), llmTaskExecutor)
+                .exceptionally(ex -> handleProviderError("Gemini", ex));
 
         CompletableFuture.allOf(gptFuture, claudeFuture, geminiFuture).join();
 
@@ -57,43 +66,42 @@ public class MultiLLMService {
                 geminiFuture.join());
     }
 
-        public String chatGeminiOnly(String message) {
-                try {
-                        return callGemini(message);
-                } catch (Exception ex) {
-                        return "Gemini error: " + rootCauseMessage(ex);
-                }
+    public String chatGeminiOnly(ChatRequest request) {
+        try {
+            PromptIR ir = promptPipeline.process(request);
+            CompiledPrompt geminiCompiled = ir.getCompiledPrompts().get(GeminiPromptCompiler.PROVIDER_NAME);
+            return callGemini(geminiCompiled);
+        } catch (Exception ex) {
+            return handleProviderError("Gemini", ex);
         }
+    }
 
-    private String callGpt(String message) {
+    private String handleProviderError(String providerName, Throwable ex) {
+        log.error("{} call failed", providerName, ex);
+        return providerName + " error: service temporarily unavailable";
+    }
+
+    private String callGpt(CompiledPrompt compiled) {
         return openAiChatClient.prompt()
-                .system(GPT_SYSTEM_PROMPT)
-                .user(message)
+                .system(compiled.systemText())
+                .user(compiled.userText())
                 .call()
                 .content();
     }
 
-    private String callClaude(String message) {
+    private String callClaude(CompiledPrompt compiled) {
         return claudeChatClient.prompt()
-                .system(CLAUDE_SYSTEM_PROMPT)
-                .user(message)
+                .system(compiled.systemText())
+                .user(compiled.userText())
                 .call()
                 .content();
     }
 
-    private String callGemini(String message) {
+    private String callGemini(CompiledPrompt compiled) {
         return geminiChatClient.prompt()
-                .system(GEMINI_SYSTEM_PROMPT)
-                .user(message)
+                .system(compiled.systemText())
+                .user(compiled.userText())
                 .call()
                 .content();
-    }
-
-    private static String rootCauseMessage(Throwable ex) {
-        Throwable cause = ex;
-        while (cause.getCause() != null) {
-            cause = cause.getCause();
-        }
-        return cause.getMessage();
     }
 }

@@ -20,7 +20,7 @@ public class ChatController {
 
     @PostMapping("/chat")
     public ResponseEntity<?> chat(@RequestBody ChatRequest chatRequest) {
-        return ResponseEntity.ok().body(chatService.chat(chatRequest.getMessage()));
+        return ResponseEntity.ok().body(chatService.chat(chatRequest));
     }
 }
 
