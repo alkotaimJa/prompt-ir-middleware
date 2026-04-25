@@ -23,4 +23,9 @@ public class MultiLLMController {
     public ResponseEntity<MultiLLMResponse> multiChat(@RequestBody ChatRequest chatRequest) {
         return ResponseEntity.ok(multiLLMService.chat(chatRequest.getMessage()));
     }
+
+    @PostMapping("/chat/gemini")
+    public ResponseEntity<String> geminiChat(@RequestBody ChatRequest chatRequest) {
+        return ResponseEntity.ok(multiLLMService.chatGeminiOnly(chatRequest.getMessage()));
+    }
 }

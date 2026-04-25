@@ -18,15 +18,6 @@ import java.util.concurrent.TimeUnit;
 @Configuration
 public class AIConfig {
 
-    @Bean
-    public Client googleGenAiClient(@Value("${spring.ai.google.genai.api-key:}") String apiKey) {
-        Assert.hasText(apiKey,
-                "Google Gemini API key must be configured. " +
-                "Set the GEMINI_KEY environment variable or the " +
-                "'spring.ai.google.genai.api-key' property.");
-        return Client.builder().apiKey(apiKey).build();
-    }
-
     @Bean("openAiChatClient")
     public ChatClient openAiChatClient(OpenAiChatModel openAiChatModel) {
         return ChatClient.builder(openAiChatModel).build();

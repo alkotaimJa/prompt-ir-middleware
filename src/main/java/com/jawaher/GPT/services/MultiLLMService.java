@@ -57,6 +57,14 @@ public class MultiLLMService {
                 geminiFuture.join());
     }
 
+        public String chatGeminiOnly(String message) {
+                try {
+                        return callGemini(message);
+                } catch (Exception ex) {
+                        return "Gemini error: " + rootCauseMessage(ex);
+                }
+        }
+
     private String callGpt(String message) {
         return openAiChatClient.prompt()
                 .system(GPT_SYSTEM_PROMPT)
