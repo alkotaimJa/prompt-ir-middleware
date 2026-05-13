@@ -49,6 +49,9 @@ public class OutputFormatTransformer implements PromptTransformer {
     @Override
     public PromptIR transform(PromptIR ir, ChatRequest originalRequest) {
         String format = resolveFormat(originalRequest, ir);
+        if (format == null) {
+            return ir;
+        }
         String directive = FORMAT_DIRECTIVES.get(format);
         if (directive != null) {
             String current = ir.getTaskInstruction() != null ? ir.getTaskInstruction() : "";
