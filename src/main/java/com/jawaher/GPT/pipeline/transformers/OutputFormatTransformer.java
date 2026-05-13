@@ -69,7 +69,7 @@ public class OutputFormatTransformer implements PromptTransformer {
         if (normalized.contains("bullet points") || normalized.contains("bulleted list") || normalized.contains("bullet list")) {
             return "bullet_points";
         }
-        if (normalized.contains("numbered list") || normalized.contains("step by step") || containsWord(normalized, "steps")) {
+        if (normalized.contains("numbered list") || normalized.contains("step by step") || normalized.contains("numbered steps")) {
             return "numbered_list";
         }
         if (containsWord(normalized, "sections") || containsWord(normalized, "section") || containsWord(normalized, "headings") || containsWord(normalized, "heading")) {
@@ -84,6 +84,7 @@ public class OutputFormatTransformer implements PromptTransformer {
     private String normalize(String text) {
         return text.toLowerCase(Locale.ROOT)
                 .replace('-', ' ')
+                .replaceAll("[^\\p{Alnum}\\s]", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
     }
