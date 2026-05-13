@@ -28,7 +28,7 @@ class OutputFormatTransformerTest {
 
         assertThat(ir.getTaskInstruction())
                 .startsWith("Base instruction.")
-                .contains(" ");  // appended something
+                .contains(" ");
     }
 
     @Test
@@ -92,6 +92,18 @@ class OutputFormatTransformerTest {
 
         assertThat(transformed.getOutputFormat()).isEqualTo("bullet_points");
         assertThat(transformed.getTaskInstruction()).contains("bulleted list");
+    }
+
+    @Test
+    void transform_detectsNumberedListFromStepByStepPhrase() {
+        ChatRequest request = new ChatRequest();
+        PromptIR ir = new PromptIR("Explain this step-by-step");
+        ir.setTaskInstruction("Do it.");
+
+        PromptIR transformed = transformer.transform(ir, request);
+
+        assertThat(transformed.getOutputFormat()).isEqualTo("numbered_list");
+        assertThat(transformed.getTaskInstruction()).contains("numbered list");
     }
 
     @Test

@@ -6,17 +6,15 @@ import com.jawaher.GPT.pipeline.PromptTransformer;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * T3 — Output Format Specification.
  * <p>
- * Appends a format-directive sentence to the task instruction when the request
- * specifies a recognised output format. Unknown or absent formats leave the
- * instruction unchanged.
+ * Appends a format-directive sentence to the task instruction when a recognised
+ * output format is requested explicitly or inferred from the user message.
+ * Unknown or absent formats leave the instruction unchanged.
  *
  * <p>Supported format identifiers:
  * <ul>
@@ -31,14 +29,12 @@ import java.util.regex.Pattern;
 @Order(4)
 public class OutputFormatTransformer implements PromptTransformer {
 
-    private record FormatPattern(Pattern pattern, String format) {}
-
     private static final Map<String, String> FORMAT_DIRECTIVES = Map.of(
-            "bullet_points",  "Format your response as a bulleted list.",
-            "json",           "Format your response as valid JSON.",
-            "numbered_list",  "Format your response as a numbered list.",
-            "prose",          "Format your response as clear, flowing prose.",
-            "sections",       "Format your response with clear section headings."
+            "bullet_points", "Format your response as a bulleted list.",
+            "json", "Format your response as valid JSON.",
+            "numbered_list", "Format your response as a numbered list.",
+            "prose", "Format your response as clear, flowing prose.",
+            "sections", "Format your response with clear section headings."
     );
 
     private static final Map<String, String> FORMAT_ALIASES = Map.of(
@@ -48,14 +44,6 @@ public class OutputFormatTransformer implements PromptTransformer {
             "numbered", "numbered_list",
             "numberedlist", "numbered_list",
             "numbered_points", "numbered_list"
-    );
-
-    private static final List<FormatPattern> DETECTION_PATTERNS = List.of(
-            new FormatPattern(Pattern.compile("\\bjson\\b", Pattern.CASE_INSENSITIVE), "json"),
-            new FormatPattern(Pattern.compile("\\b(bullet(?:ed)?(?:\\s+points?|\\s+list)?|bulleted\\s+list)\\b", Pattern.CASE_INSENSITIVE), "bullet_points"),
-            new FormatPattern(Pattern.compile("\\b(numbered\\s+list|numbered\\s+points?)\\b", Pattern.CASE_INSENSITIVE), "numbered_list"),
-            new FormatPattern(Pattern.compile("\\b(section(?:s)?|headings?)\\b", Pattern.CASE_INSENSITIVE), "sections"),
-            new FormatPattern(Pattern.compile("\\b(prose|paragraphs?)\\b", Pattern.CASE_INSENSITIVE), "prose")
     );
 
     @Override
@@ -93,12 +81,39 @@ public class OutputFormatTransformer implements PromptTransformer {
         if (userInput == null || userInput.isBlank()) {
             return null;
         }
-        for (FormatPattern fp : DETECTION_PATTERNS) {
-            if (fp.pattern().matcher(userInput).find()) {
-                return fp.format();
-            }
+        String normalized = normalizeText(userInput);
+
+        if (containsWord(normalized, "json")) {
+            return "json";
+        }
+        if (normalized.contains("bullet points") || normalized.contains("bulleted list") || normalized.contains("bullet list")) {
+            return "bullet_points";
+        }
+        if (normalized.contains("numbered list") || normalized.contains("step by step") || normalized.contains("numbered steps")) {
+            return "numbered_list";
+        }
+        if (containsWord(normalized, "sections") || containsWord(normalized, "section")
+                || containsWord(normalized, "headings") || containsWord(normalized, "heading")) {
+            return "sections";
+        }
+        if (containsWord(normalized, "prose")
+                || containsWord(normalized, "paragraph")
+                || containsWord(normalized, "paragraphs")) {
+            return "prose";
         }
         return null;
+    }
+
+    private String normalizeText(String text) {
+        return text.toLowerCase(Locale.ROOT)
+                .replace('-', ' ')
+                .replaceAll("[^\\p{Alnum}\\s]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private boolean containsWord(String text, String word) {
+        return (" " + text + " ").contains(" " + word + " ");
     }
 
     private String normalizeFormat(String format) {
