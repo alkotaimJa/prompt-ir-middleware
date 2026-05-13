@@ -69,4 +69,39 @@ class OutputFormatTransformerTest {
 
         assertThat(ir.getTaskInstruction()).isEqualTo("Unchanged.");
     }
+
+    @Test
+    void transform_detectsJsonFormatFromUserInputWhenExplicitFormatMissing() {
+        ChatRequest request = new ChatRequest();
+
+        PromptIR ir = new PromptIR("Please return this as json");
+        ir.setTaskInstruction("Do it.");
+        ir = transformer.transform(ir, request);
+
+        assertThat(ir.getTaskInstruction()).contains("valid JSON");
+    }
+
+    @Test
+    void transform_detectsNumberedListFromStepByStepPhrase() {
+        ChatRequest request = new ChatRequest();
+
+        PromptIR ir = new PromptIR("Explain this step by step");
+        ir.setTaskInstruction("Do it.");
+        ir = transformer.transform(ir, request);
+
+        assertThat(ir.getTaskInstruction()).contains("numbered list");
+    }
+
+    @Test
+    void transform_explicitFormatTakesPrecedenceOverDetectedFormat() {
+        ChatRequest request = new ChatRequest();
+        request.setOutputFormat("sections");
+
+        PromptIR ir = new PromptIR("Please output as json");
+        ir.setTaskInstruction("Do it.");
+        ir = transformer.transform(ir, request);
+
+        assertThat(ir.getTaskInstruction()).contains("section headings");
+        assertThat(ir.getTaskInstruction()).doesNotContain("valid JSON");
+    }
 }
