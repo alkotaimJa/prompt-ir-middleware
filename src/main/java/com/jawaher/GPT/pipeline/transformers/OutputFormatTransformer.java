@@ -6,9 +6,8 @@ import com.jawaher.GPT.pipeline.PromptTransformer;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * T3 — Output Format Specification.
@@ -37,15 +36,6 @@ public class OutputFormatTransformer implements PromptTransformer {
             "prose",          "Format your response as clear, flowing prose.",
             "sections",       "Format your response with clear section headings."
     );
-    private record FormatPattern(Pattern pattern, String format) {}
-    private static final List<FormatPattern> DETECTION_PATTERNS = List.of(
-            new FormatPattern(Pattern.compile("\\bjson\\b", Pattern.CASE_INSENSITIVE), "json"),
-            new FormatPattern(Pattern.compile("\\b(bullet\\s*points?|bulleted\\s*list|bullet\\s*list)\\b", Pattern.CASE_INSENSITIVE), "bullet_points"),
-            new FormatPattern(Pattern.compile("\\b(numbered\\s*list|step\\s*-?\\s*by\\s*-?\\s*step|steps?)\\b", Pattern.CASE_INSENSITIVE), "numbered_list"),
-            new FormatPattern(Pattern.compile("\\b(section(?:s)?|headings?)\\b", Pattern.CASE_INSENSITIVE), "sections"),
-            new FormatPattern(Pattern.compile("\\b(prose|paragraphs?)\\b", Pattern.CASE_INSENSITIVE), "prose")
-    );
-
     @Override
     public PromptIR transform(PromptIR ir, ChatRequest originalRequest) {
         String format = resolveFormat(originalRequest, ir);
@@ -55,25 +45,50 @@ public class OutputFormatTransformer implements PromptTransformer {
         String directive = FORMAT_DIRECTIVES.get(format);
         if (directive != null) {
             String current = ir.getTaskInstruction() != null ? ir.getTaskInstruction() : "";
-            ir.setTaskInstruction(current + " " + directive);
+            if (!current.contains(directive)) {
+                ir.setTaskInstruction((current + " " + directive).trim());
+            }
         }
         return ir;
     }
 
     private String resolveFormat(ChatRequest originalRequest, PromptIR ir) {
         String explicit = originalRequest.getOutputFormat();
-        if (explicit != null && !explicit.isBlank()) {
+        if (explicit != null && !explicit.isBlank() && FORMAT_DIRECTIVES.containsKey(explicit)) {
             return explicit;
         }
         String userInput = ir.getUserInput();
         if (userInput == null || userInput.isBlank()) {
             return null;
         }
-        for (FormatPattern fp : DETECTION_PATTERNS) {
-            if (fp.pattern().matcher(userInput).find()) {
-                return fp.format();
-            }
+        String normalized = normalize(userInput);
+
+        if (containsWord(normalized, "json")) {
+            return "json";
+        }
+        if (normalized.contains("bullet points") || normalized.contains("bulleted list") || normalized.contains("bullet list")) {
+            return "bullet_points";
+        }
+        if (normalized.contains("numbered list") || normalized.contains("step by step") || containsWord(normalized, "steps")) {
+            return "numbered_list";
+        }
+        if (containsWord(normalized, "sections") || containsWord(normalized, "section") || containsWord(normalized, "headings") || containsWord(normalized, "heading")) {
+            return "sections";
+        }
+        if (containsWord(normalized, "prose") || containsWord(normalized, "paragraph") || containsWord(normalized, "paragraphs")) {
+            return "prose";
         }
         return null;
+    }
+
+    private String normalize(String text) {
+        return text.toLowerCase(Locale.ROOT)
+                .replace('-', ' ')
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private boolean containsWord(String text, String word) {
+        return (" " + text + " ").contains(" " + word + " ");
     }
 }
