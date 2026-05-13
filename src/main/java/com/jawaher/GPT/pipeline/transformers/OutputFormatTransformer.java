@@ -96,7 +96,9 @@ public class OutputFormatTransformer implements PromptTransformer {
                 || containsWord(normalized, "headings") || containsWord(normalized, "heading")) {
             return "sections";
         }
-        if (containsWord(normalized, "prose") || containsWord(normalized, "paragraph") || containsWord(normalized, "paragraphs")) {
+        if (containsWord(normalized, "prose")
+                || containsWord(normalized, "paragraph")
+                || containsWord(normalized, "paragraphs")) {
             return "prose";
         }
         return null;
