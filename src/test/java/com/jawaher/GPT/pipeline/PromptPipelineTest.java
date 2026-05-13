@@ -97,6 +97,17 @@ class PromptPipelineTest {
     }
 
     @Test
+    void process_detectsOutputFormatFromMessageWhenNotProvided() {
+        ChatRequest request = new ChatRequest();
+        request.setMessage("Explain this and return it in JSON.");
+
+        PromptIR ir = buildPipeline().process(request);
+
+        assertThat(ir.getOutputFormat()).isEqualTo("json");
+        assertThat(ir.getTaskInstruction()).contains("valid JSON");
+    }
+
+    @Test
     void process_delimitsContextBlock() {
         ChatRequest request = new ChatRequest();
         request.setMessage("Summarise");

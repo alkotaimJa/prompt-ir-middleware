@@ -69,4 +69,53 @@ class OutputFormatTransformerTest {
 
         assertThat(ir.getTaskInstruction()).isEqualTo("Unchanged.");
     }
+
+    @Test
+    void transform_detectsJsonFormatFromUserInputWhenRequestFormatMissing() {
+        ChatRequest request = new ChatRequest();
+        PromptIR ir = new PromptIR("Please return the answer in JSON format.");
+        ir.setTaskInstruction("Do it.");
+
+        PromptIR transformed = transformer.transform(ir, request);
+
+        assertThat(transformed.getOutputFormat()).isEqualTo("json");
+        assertThat(transformed.getTaskInstruction()).contains("valid JSON");
+    }
+
+    @Test
+    void transform_detectsBulletPointsFormatFromUserInputWhenRequestFormatMissing() {
+        ChatRequest request = new ChatRequest();
+        PromptIR ir = new PromptIR("Answer with bullet points only.");
+        ir.setTaskInstruction("Do it.");
+
+        PromptIR transformed = transformer.transform(ir, request);
+
+        assertThat(transformed.getOutputFormat()).isEqualTo("bullet_points");
+        assertThat(transformed.getTaskInstruction()).contains("bulleted list");
+    }
+
+    @Test
+    void transform_normalizesKnownFormatAliases() {
+        ChatRequest request = new ChatRequest();
+        request.setOutputFormat("numbered list");
+
+        PromptIR ir = transformer.transform(irWithInstruction("Do it."), request);
+
+        assertThat(ir.getOutputFormat()).isEqualTo("numbered_list");
+        assertThat(ir.getTaskInstruction()).contains("numbered list");
+    }
+
+    @Test
+    void transform_prioritizesExplicitFormatOverDetectedMessageFormat() {
+        ChatRequest request = new ChatRequest();
+        request.setOutputFormat("prose");
+        PromptIR ir = new PromptIR("Give me JSON output.");
+        ir.setTaskInstruction("Do it.");
+
+        PromptIR transformed = transformer.transform(ir, request);
+
+        assertThat(transformed.getOutputFormat()).isEqualTo("prose");
+        assertThat(transformed.getTaskInstruction()).contains("flowing prose");
+        assertThat(transformed.getTaskInstruction()).doesNotContain("valid JSON");
+    }
 }
