@@ -28,7 +28,7 @@ class OutputFormatTransformerTest {
 
         assertThat(ir.getTaskInstruction())
                 .startsWith("Base instruction.")
-                .contains(" ");  // appended something
+                .contains(" ");
     }
 
     @Test
@@ -71,37 +71,63 @@ class OutputFormatTransformerTest {
     }
 
     @Test
-    void transform_detectsJsonFormatFromUserInputWhenExplicitFormatMissing() {
+    void transform_detectsJsonFormatFromUserInputWhenRequestFormatMissing() {
         ChatRequest request = new ChatRequest();
-
-        PromptIR ir = new PromptIR("Please return this as json");
+        PromptIR ir = new PromptIR("Please return the answer in JSON format.");
         ir.setTaskInstruction("Do it.");
-        ir = transformer.transform(ir, request);
 
-        assertThat(ir.getTaskInstruction()).contains("valid JSON");
+        PromptIR transformed = transformer.transform(ir, request);
+
+        assertThat(transformed.getOutputFormat()).isEqualTo("json");
+        assertThat(transformed.getTaskInstruction()).contains("valid JSON");
+    }
+
+    @Test
+    void transform_detectsBulletPointsFormatFromUserInputWhenRequestFormatMissing() {
+        ChatRequest request = new ChatRequest();
+        PromptIR ir = new PromptIR("Answer with bullet points only.");
+        ir.setTaskInstruction("Do it.");
+
+        PromptIR transformed = transformer.transform(ir, request);
+
+        assertThat(transformed.getOutputFormat()).isEqualTo("bullet_points");
+        assertThat(transformed.getTaskInstruction()).contains("bulleted list");
     }
 
     @Test
     void transform_detectsNumberedListFromStepByStepPhrase() {
         ChatRequest request = new ChatRequest();
-
-        PromptIR ir = new PromptIR("Explain this step by step");
+        PromptIR ir = new PromptIR("Explain this step-by-step");
         ir.setTaskInstruction("Do it.");
-        ir = transformer.transform(ir, request);
 
+        PromptIR transformed = transformer.transform(ir, request);
+
+        assertThat(transformed.getOutputFormat()).isEqualTo("numbered_list");
+        assertThat(transformed.getTaskInstruction()).contains("numbered list");
+    }
+
+    @Test
+    void transform_normalizesKnownFormatAliases() {
+        ChatRequest request = new ChatRequest();
+        request.setOutputFormat("numbered list");
+
+        PromptIR ir = transformer.transform(irWithInstruction("Do it."), request);
+
+        assertThat(ir.getOutputFormat()).isEqualTo("numbered_list");
         assertThat(ir.getTaskInstruction()).contains("numbered list");
     }
 
     @Test
-    void transform_explicitFormatTakesPrecedenceOverDetectedFormat() {
+    void transform_prioritizesExplicitFormatOverDetectedMessageFormat() {
         ChatRequest request = new ChatRequest();
-        request.setOutputFormat("sections");
-
-        PromptIR ir = new PromptIR("Please output as json");
+        request.setOutputFormat("prose");
+        PromptIR ir = new PromptIR("Give me JSON output.");
         ir.setTaskInstruction("Do it.");
-        ir = transformer.transform(ir, request);
 
-        assertThat(ir.getTaskInstruction()).contains("section headings");
-        assertThat(ir.getTaskInstruction()).doesNotContain("valid JSON");
+        PromptIR transformed = transformer.transform(ir, request);
+
+        assertThat(transformed.getOutputFormat()).isEqualTo("prose");
+        assertThat(transformed.getTaskInstruction()).contains("flowing prose");
+        assertThat(transformed.getTaskInstruction()).doesNotContain("valid JSON");
     }
 }

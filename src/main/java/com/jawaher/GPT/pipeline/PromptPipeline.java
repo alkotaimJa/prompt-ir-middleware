@@ -2,6 +2,8 @@ package com.jawaher.GPT.pipeline;
 
 import com.jawaher.GPT.DTO.ChatRequest;
 import com.jawaher.GPT.model.PromptIR;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -22,6 +24,8 @@ import java.util.List;
 @Service
 public class PromptPipeline {
 
+    private static final Logger log = LoggerFactory.getLogger(PromptPipeline.class);
+
     private final List<PromptTransformer> transformers;
 
     public PromptPipeline(List<PromptTransformer> transformers) {
@@ -37,7 +41,16 @@ public class PromptPipeline {
     public PromptIR process(ChatRequest request) {
         PromptIR ir = new PromptIR(request.getMessage());
         for (PromptTransformer transformer : transformers) {
+            String stepName = transformer.getClass().getSimpleName();
+            log.info("Starting transformation step: {}", stepName);
             ir = transformer.transform(ir, request);
+            log.info(
+                    "Completed transformation step: {} | role={} | outputFormat={} | tokenBudget={} | compiledPrompts={}",
+                    stepName,
+                    ir.getRole(),
+                    ir.getOutputFormat(),
+                    ir.getTokenBudget(),
+                    ir.getCompiledPrompts().keySet());
         }
         return ir;
     }

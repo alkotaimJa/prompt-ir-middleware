@@ -30,38 +30,58 @@ import java.util.Map;
 public class OutputFormatTransformer implements PromptTransformer {
 
     private static final Map<String, String> FORMAT_DIRECTIVES = Map.of(
-            "bullet_points",  "Format your response as a bulleted list.",
-            "json",           "Format your response as valid JSON.",
-            "numbered_list",  "Format your response as a numbered list.",
-            "prose",          "Format your response as clear, flowing prose.",
-            "sections",       "Format your response with clear section headings."
+            "bullet_points", "Format your response as a bulleted list.",
+            "json", "Format your response as valid JSON.",
+            "numbered_list", "Format your response as a numbered list.",
+            "prose", "Format your response as clear, flowing prose.",
+            "sections", "Format your response with clear section headings."
     );
+
+    private static final Map<String, String> FORMAT_ALIASES = Map.of(
+            "bullet", "bullet_points",
+            "bullets", "bullet_points",
+            "bulleted_list", "bullet_points",
+            "numbered", "numbered_list",
+            "numberedlist", "numbered_list",
+            "numbered_points", "numbered_list"
+    );
+
     @Override
     public PromptIR transform(PromptIR ir, ChatRequest originalRequest) {
-        String format = resolveFormat(originalRequest, ir);
-        if (format == null) {
-            return ir;
+        String resolvedFormat = resolveRequestedFormat(originalRequest.getOutputFormat());
+        if (resolvedFormat == null) {
+            resolvedFormat = detectFormatFromUserInput(ir.getUserInput());
         }
-        String directive = FORMAT_DIRECTIVES.get(format);
-        if (directive != null) {
+
+        if (resolvedFormat != null) {
+            ir.setOutputFormat(resolvedFormat);
+
+            String directive = FORMAT_DIRECTIVES.get(resolvedFormat);
             String current = ir.getTaskInstruction() != null ? ir.getTaskInstruction() : "";
-            if (!current.contains(directive)) {
+            if (directive != null && !current.contains(directive)) {
                 ir.setTaskInstruction((current + " " + directive).trim());
             }
         }
         return ir;
     }
 
-    private String resolveFormat(ChatRequest originalRequest, PromptIR ir) {
-        String explicit = originalRequest.getOutputFormat();
-        if (explicit != null && !explicit.isBlank() && FORMAT_DIRECTIVES.containsKey(explicit)) {
-            return explicit;
+    private String resolveRequestedFormat(String requestedFormat) {
+        if (requestedFormat == null || requestedFormat.isBlank()) {
+            return null;
         }
-        String userInput = ir.getUserInput();
+
+        String normalized = normalizeFormat(requestedFormat);
+        if (FORMAT_DIRECTIVES.containsKey(normalized)) {
+            return normalized;
+        }
+        return FORMAT_ALIASES.get(normalized);
+    }
+
+    private String detectFormatFromUserInput(String userInput) {
         if (userInput == null || userInput.isBlank()) {
             return null;
         }
-        String normalized = normalize(userInput);
+        String normalized = normalizeText(userInput);
 
         if (containsWord(normalized, "json")) {
             return "json";
@@ -72,7 +92,8 @@ public class OutputFormatTransformer implements PromptTransformer {
         if (normalized.contains("numbered list") || normalized.contains("step by step") || normalized.contains("numbered steps")) {
             return "numbered_list";
         }
-        if (containsWord(normalized, "sections") || containsWord(normalized, "section") || containsWord(normalized, "headings") || containsWord(normalized, "heading")) {
+        if (containsWord(normalized, "sections") || containsWord(normalized, "section")
+                || containsWord(normalized, "headings") || containsWord(normalized, "heading")) {
             return "sections";
         }
         if (containsWord(normalized, "prose") || containsWord(normalized, "paragraph") || containsWord(normalized, "paragraphs")) {
@@ -81,7 +102,7 @@ public class OutputFormatTransformer implements PromptTransformer {
         return null;
     }
 
-    private String normalize(String text) {
+    private String normalizeText(String text) {
         return text.toLowerCase(Locale.ROOT)
                 .replace('-', ' ')
                 .replaceAll("[^\\p{Alnum}\\s]", " ")
@@ -91,5 +112,12 @@ public class OutputFormatTransformer implements PromptTransformer {
 
     private boolean containsWord(String text, String word) {
         return (" " + text + " ").contains(" " + word + " ");
+    }
+
+    private String normalizeFormat(String format) {
+        return format.trim()
+                .toLowerCase(Locale.ROOT)
+                .replace('-', '_')
+                .replace(' ', '_');
     }
 }
