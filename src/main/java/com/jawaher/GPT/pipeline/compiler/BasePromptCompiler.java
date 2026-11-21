@@ -27,8 +27,16 @@ public abstract class BasePromptCompiler implements ProviderPromptCompiler {
         if (ir.getContextBlock() != null && !ir.getContextBlock().isBlank()) {
             sb.append(ir.getContextBlock()).append("\n\n");
         }
-        if (ir.getUserInput() != null && !ir.getUserInput().isBlank()) {
-            sb.append(ir.getUserInput());
+        // T1 (Instruction Scaffolding) normally embeds the user input inside the
+        // task instruction. Appending it again would send the query twice, which
+        // confounds the raw-vs-transformed comparison, so it is only appended
+        // when the instruction does not already contain it.
+        String userInput = ir.getUserInput();
+        String instruction = ir.getTaskInstruction();
+        boolean alreadyEmbedded = instruction != null && userInput != null
+                && !userInput.isBlank() && instruction.contains(userInput.strip());
+        if (userInput != null && !userInput.isBlank() && !alreadyEmbedded) {
+            sb.append(userInput);
         }
 
         return sb.toString().stripTrailing();

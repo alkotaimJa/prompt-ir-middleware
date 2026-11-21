@@ -65,8 +65,77 @@ This work is grounded in peer‑reviewed research from:
 
 ---
 
+## 🧪 Evaluation Platform (raw prompt vs transformed prompt)
+
+The repository now contains a complete, deployable experiment platform:
+
+| Part | What it does |
+|---|---|
+| Participant UI (`/`) | Consent → ask a question → see **three blinded models**, each with **Response A / Response B** (one from the raw prompt, one from the transformed prompt, random order) → vote + write a short reason per model → pick the best model overall |
+| Experiment API (`/api/...`) | Runs the pipeline, executes 2 × 3 LLM calls concurrently, stores everything, resolves blinded votes |
+| Researcher dashboard (`/admin.html`) | Win rate of transformed prompts per provider and task category, Wilson 95% CI, exact sign test, best-model counts, latency/failures, latest reasons, CSV export |
+| Database | PostgreSQL in production, H2 locally |
+
+### What is stored
+
+| Table | Contents |
+|---|---|
+| `participants` | anonymous id, optional background and LLM familiarity, consent |
+| `trials` | raw prompt, Prompt IR (JSON), all compiled/transformed prompts (JSON), task category, shuffled model order, best model + reason |
+| `llm_responses` | provider, model, condition (RAW / TRANSFORMED), exact system + user prompt sent, response text, latency, success/error, blinded label A/B |
+| `votes` | provider, what was clicked (A/B/both good/both poor), un-blinded preference (RAW / TRANSFORMED / TIE / NEITHER), participant's reason |
+
+### API
+
+```
+GET  /api/study                       study settings
+POST /api/participants                {consent, background?, llmFamiliarity?, accessCode?}
+GET  /api/participants/{id}           progress
+POST /api/trials                      {participantId, taskCategory, prompt}  → blinded responses
+POST /api/trials/{id}/evaluation      {participantId, votes:[{slot, choice, reason}], bestSlot, bestReason}
+GET  /api/admin/stats                 header X-Admin-Token
+GET  /api/admin/export/votes.csv      header X-Admin-Token
+GET  /api/admin/export/responses.csv  header X-Admin-Token
+```
+
+The original middleware endpoints (`POST /chat`, `POST /api/chat/multi`, `POST /api/chat/gemini`) are unchanged.
+
+### Run locally
+
+```bash
+# No API keys needed: mock answers, local H2 database in ./data
+EXPERIMENT_MOCK_LLM=true ADMIN_TOKEN=dev ./mvnw spring-boot:run
+# open http://localhost:8080  and  http://localhost:8080/admin.html (token: dev)
+
+# Real models
+OPENAI_KEY=... ANTHROPIC_KEY=... GEMINI_KEY=... ADMIN_TOKEN=choose-a-secret ./mvnw spring-boot:run
+```
+
+### Deploy (Render, free tier)
+
+1. Push this branch to GitHub and merge it into `main`.
+2. In Render: **New → Blueprint**, pick this repository. `render.yaml` creates the web service and a PostgreSQL database.
+3. Enter `OPENAI_KEY`, `ANTHROPIC_KEY`, `GEMINI_KEY` (and optionally `EXPERIMENT_ACCESS_CODE`).
+4. After the deploy, open the service URL and share it with participants. The generated `ADMIN_TOKEN` is under the service's **Environment** tab.
+
+Notes: free web services sleep after inactivity (the first visit then takes about a minute), and Render's free PostgreSQL expires after a limited period, so download the CSV regularly or point `DATABASE_URL` at a persistent database (e.g. Neon). Any host that runs a Docker image works the same way: set `DATABASE_URL` and the keys.
+
+### Configuration (environment variables)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OPENAI_KEY`, `ANTHROPIC_KEY`, `GEMINI_KEY` | – | provider API keys |
+| `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL` | gpt-4o, claude-opus-4-5, gemini-2.5-flash | model ids (stored with every response) |
+| `DATABASE_URL` | local H2 | `postgres://user:pass@host:5432/db` |
+| `ADMIN_TOKEN` | – (admin API disabled) | protects results and exports |
+| `EXPERIMENT_ACCESS_CODE` | – (open) | code participants must enter |
+| `EXPERIMENT_MAX_TRIALS` | 25 | questions per participant |
+| `EXPERIMENT_MAX_TRIALS_PER_IP_HOUR` | 40 | abuse/cost protection |
+| `EXPERIMENT_MIN_REASON_CHARS` | 3 | minimum length of a vote reason |
+| `EXPERIMENT_MOCK_LLM` | false | deterministic mock answers |
+
 ## 📂 Project Status
-Future work includes extending the evaluation dataset and analysing qualitative preference trends across task categories.
+Implementation and evaluation platform complete; data collection (raw vs transformed preference study) is the current phase.
 
 ---
 

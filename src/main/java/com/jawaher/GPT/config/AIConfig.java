@@ -35,8 +35,10 @@ public class AIConfig {
 
     @Bean("llmTaskExecutor")
     public Executor llmTaskExecutor() {
+        // Each experiment trial issues 2 x 3 = 6 concurrent calls; the core size
+        // lets several participants run trials at once without queueing.
         ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                3, 10, 60L, TimeUnit.SECONDS,
+                24, 48, 60L, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(100),
                 new ThreadPoolExecutor.CallerRunsPolicy());
         executor.allowCoreThreadTimeOut(true);
