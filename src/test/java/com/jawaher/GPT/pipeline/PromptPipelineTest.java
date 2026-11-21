@@ -3,153 +3,150 @@ package com.jawaher.GPT.pipeline;
 import com.jawaher.GPT.DTO.ChatRequest;
 import com.jawaher.GPT.model.CompiledPrompt;
 import com.jawaher.GPT.model.PromptIR;
-import com.jawaher.GPT.pipeline.compiler.AnthropicPromptCompiler;
-import com.jawaher.GPT.pipeline.compiler.GeminiPromptCompiler;
-import com.jawaher.GPT.pipeline.compiler.OpenAIPromptCompiler;
-import com.jawaher.GPT.pipeline.compiler.ProviderPromptCompiler;
-import com.jawaher.GPT.pipeline.transformers.ContextDelimitationTransformer;
-import com.jawaher.GPT.pipeline.transformers.InstructionScaffoldingTransformer;
-import com.jawaher.GPT.pipeline.transformers.OutputFormatTransformer;
-import com.jawaher.GPT.pipeline.transformers.PromptIRBuilderTransformer;
-import com.jawaher.GPT.pipeline.transformers.ProviderCompilationTransformer;
-import com.jawaher.GPT.pipeline.transformers.RoleConditioningTransformer;
-import com.jawaher.GPT.pipeline.transformers.TokenBudgetingTransformer;
+import com.jawaher.GPT.model.TaskType;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Integration-style unit test for the full pipeline using real transformer
- * instances (no Spring context required).
- */
+/** End-to-end tests of the v2 pipeline using real transformer instances (no Spring context). */
 class PromptPipelineTest {
 
-    private static final String DEFAULT_ROLE = "a helpful and precise AI assistant";
+    @Test
+    void comparativeTask_getsTaskInstructionCriteriaTableAndGuidelines() {
+        PromptIR ir = TestPipelines.run("Compare agile and waterfall", "Comparative reasoning", null);
 
-    private PromptPipeline buildPipeline() {
-        List<ProviderPromptCompiler> compilers = List.of(new OpenAIPromptCompiler(), new AnthropicPromptCompiler(), new GeminiPromptCompiler());
-        return new PromptPipeline(List.of(
-                new InstructionScaffoldingTransformer("Your task is:", "Please complete this task clearly and accurately."),
-                new RoleConditioningTransformer(DEFAULT_ROLE),
-                new OutputFormatTransformer(),
-                new ContextDelimitationTransformer(),
-                new PromptIRBuilderTransformer(),
-                new ProviderCompilationTransformer(compilers),
-                new TokenBudgetingTransformer(128_000, 200_000, 1_000_000, compilers)
-        ));
+        assertThat(ir.getTaskType()).isEqualTo(TaskType.COMPARATIVE);
+        assertThat(ir.getTaskInstruction()).isEqualTo("Compare the options in the user's request.");
+        assertThat(ir.getSuccessCriteria()).hasSize(3);
+        assertThat(ir.getOutputFormat()).isEqualTo("table");
+        assertThat(ir.getLengthGuidance()).isEqualTo(TestPipelines.LENGTH_GUIDANCE);
+        CompiledPrompt openai = ir.getCompiledPrompts().get("openai");
+        assertThat(openai.systemText()).contains("Markdown table");
+        assertThat(openai.userText()).contains("## Task").contains("## Request").endsWith("Compare agile and waterfall");
     }
 
     @Test
-    void process_simpleMessage_populatesAllThreeCompiledPrompts() {
-        ChatRequest request = new ChatRequest();
-        request.setMessage("What is recursion?");
+    void userInputIsNeverModifiedAndAppearsExactlyOnce() {
+        String msg = "What is the difference between REST and SOAP?";
+        PromptIR ir = TestPipelines.run(msg, "Factual QA", null);
 
-        PromptIR ir = buildPipeline().process(request);
+        assertThat(ir.getUserInput()).isEqualTo(msg);
+        for (CompiledPrompt p : ir.getCompiledPrompts().values()) {
+            String u = p.userText();
+            assertThat(u.indexOf(msg)).isEqualTo(u.lastIndexOf(msg));
+            assertThat(u).contains(msg);
+        }
+    }
+
+    @Test
+    void noGenericSuffixOrDefaultPersona() {
+        PromptIR ir = TestPipelines.run("Explain the class struggle in Marx", null, null);
+
+        assertThat(ir.getRole()).isEmpty();
+        for (CompiledPrompt p : ir.getCompiledPrompts().values()) {
+            assertThat(p.systemText()).doesNotContain("You are").doesNotContain("helpful and precise");
+            assertThat(p.userText()).doesNotContain("Please complete this task clearly and accurately");
+        }
+    }
+
+    @Test
+    void providersReceiveIdenticalWording() {
+        PromptIR ir = TestPipelines.run("Explain REST APIs to a beginner", "Analytical explanation", "I am a student.");
+        CompiledPrompt o = ir.getCompiledPrompts().get("openai");
+        CompiledPrompt c = ir.getCompiledPrompts().get("claude");
+        CompiledPrompt g = ir.getCompiledPrompts().get("gemini");
+
+        assertThat(o.systemText()).isEqualTo(c.systemText()).isEqualTo(g.systemText());
+        assertThat(o.userText()).isEqualTo(g.userText());
+        // Claude differs only in delimiters: removing them yields the same words.
+        String claudeWords = c.userText().replaceAll("</?[a-z]+>\\n?", "").replaceAll("\\s+", " ").trim();
+        String markdownWords = o.userText().replaceAll("## [^\\n]+\\n", "").replaceAll("\\s+", " ").trim();
+        assertThat(claudeWords).isEqualTo(markdownWords);
+    }
+
+    @Test
+    void selectedContextIsDelimitedInItsOwnSection() {
+        PromptIR ir = TestPipelines.run("Compare agile and waterfall", "Comparative reasoning",
+                "I lead a 5-person startup team.");
+
+        assertThat(ir.getContextBlock()).isEqualTo("I lead a 5-person startup team.");
+        assertThat(ir.getCompiledPrompts().get("claude").userText())
+                .contains("<context>\nI lead a 5-person startup team.\n</context>");
+        assertThat(ir.getCompiledPrompts().get("openai").userText())
+                .contains("## Context provided by the user\nI lead a 5-person startup team.");
+    }
+
+    @Test
+    void explicitCountDisablesLengthGuardAndIsRestated() {
+        PromptIR ir = TestPipelines.run("List advantages of REST using 5 bullet points", "Instruction following", null);
+
+        assertThat(ir.getConstraints()).contains("Provide exactly 5 bullet points.");
+        assertThat(ir.getLengthGuidance()).isEmpty();
+        assertThat(ir.getOutputFormat()).isEqualTo("bullet_points");
+        assertThat(ir.getCompiledPrompts().get("openai").userText()).contains("Provide exactly 5 bullet points.");
+    }
+
+    @Test
+    void disablingAllContentLayersYieldsTheRawPrompt() {
+        PromptPipeline none = TestPipelines.pipeline(TestPipelines.ALL_CONTENT_LAYERS);
+        ChatRequest r = new ChatRequest();
+        r.setMessage("Compare agile and waterfall");
+        r.setTaskType("Comparative reasoning");
+
+        PromptIR ir = none.process(r);
+
+        for (CompiledPrompt p : ir.getCompiledPrompts().values()) {
+            assertThat(p.systemText()).isEmpty();
+            assertThat(p.userText()).isEqualTo("Compare agile and waterfall");
+        }
+        assertThat(ir.getAppliedLayers()).containsExactly("ir-normalisation", "provider-compilation", "token-budgeting");
+    }
+
+    @Test
+    void disabledLayersAreSkippedAndRecordedInVersionTag() {
+        PromptPipeline p = TestPipelines.pipeline("role-detection, length-control");
+        ChatRequest r = new ChatRequest();
+        r.setMessage("Write a Java method that reverses a list");
+        r.setTaskType("Coding");
+
+        PromptIR ir = p.process(r);
+
+        assertThat(ir.getRole()).isEmpty();
+        assertThat(ir.getLengthGuidance()).isEmpty();
+        assertThat(ir.getAppliedLayers()).doesNotContain("role-detection", "length-control");
+        assertThat(p.versionTag()).isEqualTo(PromptPipeline.VERSION + "-without:length-control,role-detection");
+        assertThat(TestPipelines.pipeline("").versionTag()).isEqualTo(PromptPipeline.VERSION);
+    }
+
+    @Test
+    void infrastructureStagesCannotBeDisabled() {
+        PromptIR ir = TestPipelines.pipeline("provider-compilation,ir-normalisation").process(request("Hello"));
 
         assertThat(ir.getCompiledPrompts()).containsKeys("openai", "claude", "gemini");
     }
 
     @Test
-    void process_scaffoldsInstruction() {
-        ChatRequest request = new ChatRequest();
-        request.setMessage("Explain polymorphism");
+    void explicitRoleAndFormatFromRequestTakePriority() {
+        ChatRequest r = request("Review this design");
+        r.setRole("senior code reviewer");
+        r.setOutputFormat("numbered_list");
 
-        PromptIR ir = buildPipeline().process(request);
-
-        assertThat(ir.getTaskInstruction()).contains("Your task is:");
-        assertThat(ir.getTaskInstruction()).contains("Explain polymorphism");
-    }
-
-    @Test
-    void process_appliesDefaultRoleWhenNoneProvided() {
-        ChatRequest request = new ChatRequest();
-        request.setMessage("Hello");
-
-        PromptIR ir = buildPipeline().process(request);
-
-        assertThat(ir.getRole()).isEqualTo(DEFAULT_ROLE);
-        assertThat(ir.getCompiledPrompts().get("openai").systemText()).contains(DEFAULT_ROLE);
-    }
-
-    @Test
-    void process_appliesCustomRole() {
-        ChatRequest request = new ChatRequest();
-        request.setMessage("Review this code");
-        request.setRole("senior code reviewer");
-
-        PromptIR ir = buildPipeline().process(request);
+        PromptIR ir = TestPipelines.pipeline("").process(r);
 
         assertThat(ir.getRole()).isEqualTo("senior code reviewer");
-        assertThat(ir.getCompiledPrompts().get("openai").systemText()).contains("senior code reviewer");
+        assertThat(ir.getOutputFormat()).isEqualTo("numbered_list");
+        assertThat(ir.getCompiledPrompts().get("openai").systemText())
+                .startsWith("You are senior code reviewer.").contains("numbered list");
     }
 
     @Test
-    void process_appendsFormatDirectiveToInstruction() {
-        ChatRequest request = new ChatRequest();
-        request.setMessage("List the steps");
-        request.setOutputFormat("numbered_list");
-
-        PromptIR ir = buildPipeline().process(request);
-
-        assertThat(ir.getTaskInstruction()).contains("numbered list");
+    void tokenBudgetIsMinimumProviderBudget() {
+        assertThat(TestPipelines.pipeline("").process(request("Hello")).getTokenBudget()).isEqualTo(128_000);
     }
 
-    @Test
-    void process_detectsOutputFormatFromMessageWhenNotProvided() {
-        ChatRequest request = new ChatRequest();
-        request.setMessage("Explain this and return it in JSON.");
-
-        PromptIR ir = buildPipeline().process(request);
-
-        assertThat(ir.getOutputFormat()).isEqualTo("json");
-        assertThat(ir.getTaskInstruction()).contains("valid JSON");
-    }
-
-    @Test
-    void process_delimitsContextBlock() {
-        ChatRequest request = new ChatRequest();
-        request.setMessage("Summarise");
-        request.setContext("This is background information.");
-
-        PromptIR ir = buildPipeline().process(request);
-
-        assertThat(ir.getContextBlock()).contains("### CONTEXT START ###");
-        assertThat(ir.getContextBlock()).contains("This is background information.");
-        assertThat(ir.getContextBlock()).contains("### CONTEXT END ###");
-    }
-
-    @Test
-    void process_compiledUserTextContainsContextAndInput() {
-        ChatRequest request = new ChatRequest();
-        request.setMessage("What should I do?");
-        request.setContext("Project deadline is tomorrow.");
-
-        PromptIR ir = buildPipeline().process(request);
-        CompiledPrompt openAi = ir.getCompiledPrompts().get("openai");
-
-        assertThat(openAi.userText()).contains("Project deadline is tomorrow.");
-        assertThat(openAi.userText()).contains("What should I do?");
-    }
-
-    @Test
-    void process_setsTokenBudgetToMinimumProviderBudget() {
-        ChatRequest request = new ChatRequest();
-        request.setMessage("Hello");
-
-        PromptIR ir = buildPipeline().process(request);
-
-        assertThat(ir.getTokenBudget()).isEqualTo(128_000);
-    }
-
-    @Test
-    void process_preservesRawUserInput() {
-        ChatRequest request = new ChatRequest();
-        request.setMessage("original message");
-
-        PromptIR ir = buildPipeline().process(request);
-
-        assertThat(ir.getUserInput()).isEqualTo("original message");
+    private static ChatRequest request(String msg) {
+        ChatRequest r = new ChatRequest();
+        r.setMessage(msg);
+        return r;
     }
 }

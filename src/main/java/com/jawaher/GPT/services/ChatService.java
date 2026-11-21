@@ -25,10 +25,6 @@ public class ChatService {
     public String chat(ChatRequest request) {
         PromptIR ir = promptPipeline.process(request);
         CompiledPrompt compiled = ir.getCompiledPrompts().get(OpenAIPromptCompiler.PROVIDER_NAME);
-        return chatClient.prompt()
-                .system(compiled.systemText())
-                .user(compiled.userText())
-                .call()
-                .content();
+        return MultiLLMService.call(chatClient, compiled);
     }
 }

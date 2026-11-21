@@ -8,42 +8,39 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * T3 — Role Prompting / Persona Framing.
+ * T5 – Role Conditioning.
  * <p>
- * Resolves the final persona string using a three-level priority chain:
- * <ol>
- *   <li><b>Explicit role</b> from {@code ChatRequest.role} — caller-supplied, highest priority.</li>
- *   <li><b>Detected role</b> from {@link PromptIR#getDetectedRole()} — inferred by T2.</li>
- *   <li><b>Default role</b> from {@code pipeline.role.default} configuration — fallback.</li>
- * </ol>
+ * Resolves the final persona: an explicit role from the request, then the
+ * detected role, then the configured default. The default is empty, so no
+ * generic "helpful assistant" persona is added.
  */
 @Component
-@Order(3)
+@Order(50)
 public class RoleConditioningTransformer implements PromptTransformer {
+
+    public static final String ID = "role-conditioning";
 
     private final String defaultRole;
 
-    public RoleConditioningTransformer(
-            @Value("${pipeline.role.default:a helpful and precise AI assistant}") String defaultRole) {
-        this.defaultRole = defaultRole;
+    public RoleConditioningTransformer(@Value("${pipeline.role.default:}") String defaultRole) {
+        this.defaultRole = defaultRole == null ? "" : defaultRole.trim();
     }
 
     @Override
-    public PromptIR transform(PromptIR ir, ChatRequest originalRequest) {
-        String requested = originalRequest.getRole();
-        String resolved;
+    public String id() {
+        return ID;
+    }
+
+    @Override
+    public PromptIR transform(PromptIR ir, ChatRequest request) {
+        String requested = request.getRole();
         if (requested != null && !requested.isBlank()) {
-            // Priority 1: caller-supplied explicit role
-            resolved = requested;
+            ir.setRole(requested.trim());
         } else if (ir.getDetectedRole() != null && !ir.getDetectedRole().isBlank()) {
-            // Priority 2: auto-detected role from message content
-            resolved = ir.getDetectedRole();
+            ir.setRole(ir.getDetectedRole());
         } else {
-            // Priority 3: configured default
-            resolved = defaultRole;
+            ir.setRole(defaultRole);
         }
-        ir.setRole(resolved);
-        ir.setOutputFormat(originalRequest.getOutputFormat());
         return ir;
     }
 }

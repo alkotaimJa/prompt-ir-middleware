@@ -12,10 +12,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class MultiLLMService {
@@ -27,18 +29,21 @@ public class MultiLLMService {
     private final ChatClient geminiChatClient;
     private final Executor llmTaskExecutor;
     private final PromptPipeline promptPipeline;
+    private final long timeoutSeconds;
 
     public MultiLLMService(
             @Qualifier("openAiChatClient") ChatClient openAiChatClient,
             @Qualifier("claudeChatClient") ChatClient claudeChatClient,
             @Qualifier("geminiChatClient") ChatClient geminiChatClient,
             @Qualifier("llmTaskExecutor") Executor llmTaskExecutor,
-            PromptPipeline promptPipeline) {
+            PromptPipeline promptPipeline,
+            @Value("${experiment.call-timeout-seconds:120}") long timeoutSeconds) {
         this.openAiChatClient = openAiChatClient;
         this.claudeChatClient = claudeChatClient;
         this.geminiChatClient = geminiChatClient;
         this.llmTaskExecutor  = llmTaskExecutor;
         this.promptPipeline   = promptPipeline;
+        this.timeoutSeconds   = timeoutSeconds;
     }
 
     public MultiLLMResponse chat(ChatRequest request) {
@@ -50,12 +55,15 @@ public class MultiLLMService {
 
         CompletableFuture<String> gptFuture = CompletableFuture
                 .supplyAsync(() -> callGpt(gptCompiled), llmTaskExecutor)
+                .orTimeout(timeoutSeconds, TimeUnit.SECONDS)
                 .exceptionally(ex -> handleProviderError("GPT", ex));
         CompletableFuture<String> claudeFuture = CompletableFuture
                 .supplyAsync(() -> callClaude(claudeCompiled), llmTaskExecutor)
+                .orTimeout(timeoutSeconds, TimeUnit.SECONDS)
                 .exceptionally(ex -> handleProviderError("Claude", ex));
         CompletableFuture<String> geminiFuture = CompletableFuture
                 .supplyAsync(() -> callGemini(geminiCompiled), llmTaskExecutor)
+                .orTimeout(timeoutSeconds, TimeUnit.SECONDS)
                 .exceptionally(ex -> handleProviderError("Gemini", ex));
 
         CompletableFuture.allOf(gptFuture, claudeFuture, geminiFuture).join();
@@ -82,26 +90,23 @@ public class MultiLLMService {
     }
 
     private String callGpt(CompiledPrompt compiled) {
-        return openAiChatClient.prompt()
-                .system(compiled.systemText())
-                .user(compiled.userText())
-                .call()
-                .content();
+        return call(openAiChatClient, compiled);
     }
 
     private String callClaude(CompiledPrompt compiled) {
-        return claudeChatClient.prompt()
-                .system(compiled.systemText())
-                .user(compiled.userText())
-                .call()
-                .content();
+        return call(claudeChatClient, compiled);
     }
 
     private String callGemini(CompiledPrompt compiled) {
-        return geminiChatClient.prompt()
-                .system(compiled.systemText())
-                .user(compiled.userText())
-                .call()
-                .content();
+        return call(geminiChatClient, compiled);
+    }
+
+    /** Sends a compiled prompt; the system message is omitted when empty (Spring AI rejects blank text). */
+    static String call(ChatClient client, CompiledPrompt compiled) {
+        ChatClient.ChatClientRequestSpec spec = client.prompt();
+        if (compiled.systemText() != null && !compiled.systemText().isBlank()) {
+            spec = spec.system(compiled.systemText());
+        }
+        return spec.user(compiled.userText()).call().content();
     }
 }

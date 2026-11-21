@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Study results · Prompt Comparison Study</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Study results</h1>
+      <div class="sub">Raw prompt vs transformed prompt (Prompt IR pipeline)</div>
+    </div>
+    <div class="actions" style="margin:0">
+      <button class="btn secondary hidden" id="refresh">Refresh</button>
+      <button class="btn secondary hidden" id="dl-votes">Download votes CSV</button>
+      <button class="btn secondary hidden" id="dl-responses">Download responses CSV</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="login" class="narrow">
+      <div class="panel">
+        <h2>Researcher sign-in</h2>
+        <form id="login-form">
+          <label for="token">Admin token</label>
+          <input type="password" id="token" autocomplete="current-password">
+          <div class="error" id="login-error" role="alert"></div>
+          <div class="actions"><button class="btn" type="submit">Show results</button></div>
+        </form>
+      </div>
+    </section>
+
+    <section id="results" class="hidden">
+      <div class="stats-grid" id="totals"></div>
+
+      <section class="block">
+        <h3>RQ1: Do participants prefer the transformed prompt?</h3>
+        <p class="muted small">Win rate is computed over decisive votes only (ties and "both poor" excluded),
+          with a Wilson 95% confidence interval and an exact two-sided sign test against 50%.</p>
+        <div class="legend">
+          <span><i style="background:var(--a)"></i>Transformed preferred</span>
+          <span><i style="background:var(--b)"></i>Raw preferred</span>
+          <span><i style="background:#9aa5b4"></i>Both equally good</span>
+          <span><i style="background:#d9a3a0"></i>Both poor</span>
+        </div>
+        <div class="table-wrap"><table class="data" id="pref-table"></table></div>
+      </section>
+
+      <section class="block">
+        <h3>By task category</h3>
+        <div class="table-wrap"><table class="data" id="cat-table"></table></div>
+      </section>
+
+      <section class="block">
+        <h3>By clarifying context</h3>
+        <p class="muted small">The selected context is given to both conditions, so these rows show whether the
+          transformation's effect changes when participants add context.</p>
+        <div class="table-wrap"><table class="data" id="ctx-table"></table></div>
+      </section>
+
+      <section class="block">
+        <h3>Best model overall (participant choice)</h3>
+        <div class="table-wrap"><table class="data" id="best-table"></table></div>
+      </section>
+
+      <section class="block">
+        <h3>LLM calls</h3>
+        <div class="table-wrap"><table class="data" id="call-table"></table></div>
+      </section>
+
+      <section class="block">
+        <h3>Latest participant reasons</h3>
+        <div class="table-wrap"><table class="data" id="reason-table"></table></div>
+      </section>
+    </section>
+  </main>
+  <script src="markdown.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
