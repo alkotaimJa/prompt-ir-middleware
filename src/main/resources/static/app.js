@@ -2,7 +2,6 @@
   "use strict";
 
   const EXAMPLES = {
-    "Summarisation": "Summarise the main idea of REST APIs for a non-technical manager.",
     "Factual QA": "What is the difference between REST and SOAP?",
     "Analytical explanation": "Explain how HTTP status codes work.",
     "Instruction following": "List advantages of REST using 5 bullet points.",

@@ -42,8 +42,13 @@ public class ExperimentService {
 
     private static final Logger log = LoggerFactory.getLogger(ExperimentService.class);
 
+    /**
+     * Task categories offered to participants. Summarisation is deliberately
+     * excluded: its output is dominated by the source text, leaving little room
+     * for prompt structure to change the response (supervisor decision).
+     */
     public static final List<String> TASK_CATEGORIES = List.of(
-            "Summarisation", "Factual QA", "Analytical explanation",
+            "Factual QA", "Analytical explanation",
             "Instruction following", "Comparative reasoning", "Coding", "Other");
 
     private final PromptPipeline pipeline;

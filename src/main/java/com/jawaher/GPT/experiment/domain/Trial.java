@@ -30,7 +30,7 @@ public class Trial {
     @Column(nullable = false)
     private Instant createdAt;
 
-    /** Optional task category chosen by the participant (summarisation, factual QA, ...). */
+    /** Task category chosen by the participant (Factual QA, Comparative reasoning, ...). */
     @Column(length = 60)
     private String taskCategory;
 

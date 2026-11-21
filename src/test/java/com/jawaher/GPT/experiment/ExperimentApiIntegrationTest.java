@@ -171,6 +171,14 @@ class ExperimentApiIntegrationTest {
     }
 
     @Test
+    void study_doesNotOfferSummarisation() throws Exception {
+        mvc.perform(get("/api/study"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.taskCategories[?(@ == 'Summarisation')]").isEmpty())
+                .andExpect(jsonPath("$.taskCategories[0]").value("Factual QA"));
+    }
+
+    @Test
     void admin_rejectsWrongToken() throws Exception {
         mvc.perform(get("/api/admin/stats").header("X-Admin-Token", "wrong"))
                 .andExpect(status().isUnauthorized());
