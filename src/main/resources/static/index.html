@@ -79,12 +79,40 @@
       </div>
     </section>
 
-    <!-- Step 3: waiting -->
+    <!-- Step 3 (optional): clarifying context -->
+    <section id="view-context" class="narrow hidden">
+      <div class="panel">
+        <h2>Add some context</h2>
+        <p class="muted">Pick the statement that best describes your situation. All answers will take it into account.
+          If none fits, choose the last option.</p>
+        <blockquote class="small muted" id="context-question" style="margin:0 0 1rem"></blockquote>
+        <form id="context-form" novalidate>
+          <div id="context-options" class="context-options" role="radiogroup" aria-label="Context"></div>
+          <div class="error" id="context-error" role="alert"></div>
+          <div class="actions">
+            <button class="btn" type="submit">Get answers</button>
+            <button class="btn secondary" type="button" id="context-back">Edit my question</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Waiting -->
     <section id="view-loading" class="narrow hidden">
       <div class="panel loading" aria-live="polite">
-        <h2>Collecting six answers</h2>
-        <p class="muted" style="margin:0 auto">Three models are answering in two ways each. This usually takes 15–60 seconds.</p>
+        <h2 id="loading-title">Collecting six answers</h2>
+        <p class="muted" style="margin:0 auto" id="loading-text">Three models are answering in two ways each. This usually takes 15–60 seconds.</p>
         <div class="bar"><span></span></div>
+      </div>
+    </section>
+
+    <!-- No usable answers -->
+    <section id="view-noresult" class="narrow hidden">
+      <div class="panel">
+        <h2>The models could not answer right now</h2>
+        <p class="muted">None of the three models returned both answers, so there is nothing to compare. This question
+          does not count towards your limit.</p>
+        <div class="actions"><button class="btn" id="retry">Try again</button></div>
       </div>
     </section>
 
@@ -93,6 +121,7 @@
       <div class="your-prompt">
         <strong>Your question</strong>
         <blockquote id="shown-prompt"></blockquote>
+        <p class="small muted hidden" id="shown-context" style="margin-top:.5rem"></p>
       </div>
       <form id="vote-form" novalidate>
         <div id="models"></div>

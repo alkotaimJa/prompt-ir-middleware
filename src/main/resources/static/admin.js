@@ -51,6 +51,10 @@
     Object.entries(s.byTaskCategory).forEach(([c, v]) => { rows += prefRows(c, v); });
     $("cat-table").innerHTML = PREF_HEAD + "<tbody>" + (rows || '<tr><td colspan="10">No votes yet.</td></tr>') + "</tbody>";
 
+    rows = "";
+    Object.entries(s.byContext || {}).forEach(([c, v]) => { rows += prefRows(c, v); });
+    $("ctx-table").innerHTML = PREF_HEAD + "<tbody>" + (rows || '<tr><td colspan="10">No votes yet.</td></tr>') + "</tbody>";
+
     const bestTotal = Object.values(s.bestModelCounts).reduce((a, b) => a + b, 0) || 1;
     $("best-table").innerHTML = "<thead><tr><th>Model</th><th>Chosen as best</th><th>Share</th></tr></thead><tbody>" +
       (Object.entries(s.bestModelCounts).map(([p, n]) =>

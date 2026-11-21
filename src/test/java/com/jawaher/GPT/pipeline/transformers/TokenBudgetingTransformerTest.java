@@ -2,97 +2,54 @@ package com.jawaher.GPT.pipeline.transformers;
 
 import com.jawaher.GPT.DTO.ChatRequest;
 import com.jawaher.GPT.model.PromptIR;
-import com.jawaher.GPT.pipeline.compiler.AnthropicPromptCompiler;
-import com.jawaher.GPT.pipeline.compiler.GeminiPromptCompiler;
-import com.jawaher.GPT.pipeline.compiler.OpenAIPromptCompiler;
-import com.jawaher.GPT.pipeline.compiler.ProviderPromptCompiler;
+import com.jawaher.GPT.model.TaskType;
+import com.jawaher.GPT.pipeline.TestPipelines;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class TokenBudgetingTransformerTest {
 
-    private static List<ProviderPromptCompiler> allCompilers() {
-        return List.of(new OpenAIPromptCompiler(), new AnthropicPromptCompiler(), new GeminiPromptCompiler());
-    }
-
-    private TokenBudgetingTransformer transformer(int openAi, int claude, int gemini) {
-        return new TokenBudgetingTransformer(openAi, claude, gemini, allCompilers());
-    }
-
-    private PromptIR buildIrWithCompiledPrompts(String instruction, String context) {
-        PromptIR ir = new PromptIR("user input");
-        ir.setRole("assistant");
-        ir.setTaskInstruction(instruction);
-        ir.setContextBlock(context != null ? context : "");
-
-        new ProviderCompilationTransformer(allCompilers()).transform(ir, new ChatRequest());
+    private PromptIR compiled(String input, String context) {
+        PromptIR ir = new PromptIR(input);
+        ir.setTaskType(TaskType.GENERAL);
+        ir.setTaskInstruction("Respond to the user's request.");
+        ir.setContextBlock(context);
+        new IRNormalisationTransformer().transform(ir, new ChatRequest());
+        new ProviderCompilationTransformer(TestPipelines.compilers()).transform(ir, new ChatRequest());
         return ir;
     }
 
     @Test
-    void transform_setsTokenBudgetToMinProviderBudget() {
-        PromptIR ir = buildIrWithCompiledPrompts("Short task.", null);
-        TokenBudgetingTransformer t = transformer(128_000, 200_000, 1_000_000);
+    void trimsOnlyContextAndNeverTheUserRequest() {
+        String input = "Q".repeat(200);
+        PromptIR ir = compiled(input, "C".repeat(10_000));
 
-        t.transform(ir, new ChatRequest());
+        new TokenBudgetingTransformer(500, 500, 500, TestPipelines.compilers()).transform(ir, new ChatRequest());
 
+        assertThat(ir.getContextBlock().length()).isLessThan(10_000);
+        assertThat(ir.getUserInput()).isEqualTo(input);
+        assertThat(ir.getCompiledPrompts().get("openai").userText()).contains(input);
+        assertThat(ir.getProviderHints()).containsKey("contextTruncated");
+    }
+
+    @Test
+    void leavesPromptUntouchedWithinBudget() {
+        PromptIR ir = compiled("Short question", "Short context");
+        String before = ir.getCompiledPrompts().get("claude").userText();
+
+        new TokenBudgetingTransformer(128_000, 200_000, 1_000_000, TestPipelines.compilers()).transform(ir, new ChatRequest());
+
+        assertThat(ir.getCompiledPrompts().get("claude").userText()).isEqualTo(before);
         assertThat(ir.getTokenBudget()).isEqualTo(128_000);
     }
 
     @Test
-    void transform_respectsPerRequestMaxTokensHint() {
-        PromptIR ir = buildIrWithCompiledPrompts("Short task.", null);
-        ChatRequest request = new ChatRequest();
-        request.setMaxTokens(500);
-
-        transformer(128_000, 200_000, 1_000_000).transform(ir, request);
-
-        assertThat(ir.getTokenBudget()).isEqualTo(500);
-    }
-
-    @Test
-    void transform_truncatesContextBlockWhenOverBudget() {
-        // Make a huge context that will exceed a tiny budget
-        String hugeContext = "X".repeat(10_000);
-        PromptIR ir = buildIrWithCompiledPrompts("task", hugeContext);
-
-        // Budget of 100 tokens = 400 chars — much smaller than the content
-        transformer(100, 100, 100).transform(ir, new ChatRequest());
-
-        // Context block should have been trimmed
-        assertThat(ir.getContextBlock().length()).isLessThan(hugeContext.length());
-    }
-
-    @Test
-    void transform_doesNotTruncateWhenWithinBudget() {
-        String instruction = "Short instruction.";
-        PromptIR ir = buildIrWithCompiledPrompts(instruction, null);
-        String originalInstruction = ir.getTaskInstruction();
-
-        transformer(128_000, 200_000, 1_000_000).transform(ir, new ChatRequest());
-
-        assertThat(ir.getTaskInstruction()).isEqualTo(originalInstruction);
-    }
-
-    @Test
-    void transform_recompilesProvidersAfterTruncation() {
-        String hugeContext = "C".repeat(10_000);
-        PromptIR ir = buildIrWithCompiledPrompts("task", hugeContext);
-        String originalUserText = ir.getCompiledPrompts().get("openai").userText();
-
-        transformer(100, 100, 100).transform(ir, new ChatRequest());
-
-        String truncatedUserText = ir.getCompiledPrompts().get("openai").userText();
-        assertThat(truncatedUserText.length()).isLessThan(originalUserText.length());
-    }
-
-    @Test
-    void estimateTokens_returnsLengthDividedByFour() {
-        assertThat(TokenBudgetingTransformer.estimateTokens("1234")).isEqualTo(1);
-        assertThat(TokenBudgetingTransformer.estimateTokens("12345678")).isEqualTo(2);
-        assertThat(TokenBudgetingTransformer.estimateTokens(null)).isEqualTo(0);
+    void requestMaxTokensLowersBudget() {
+        ChatRequest r = new ChatRequest();
+        r.setMaxTokens(1000);
+        PromptIR ir = compiled("q", "");
+        new TokenBudgetingTransformer(128_000, 200_000, 1_000_000, TestPipelines.compilers()).transform(ir, r);
+        assertThat(ir.getTokenBudget()).isEqualTo(1000);
     }
 }

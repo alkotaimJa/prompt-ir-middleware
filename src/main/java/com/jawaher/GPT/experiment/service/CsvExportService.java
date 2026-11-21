@@ -37,7 +37,8 @@ public class CsvExportService {
                 "participant_llm_familiarity", "task_category", "provider", "model", "raw_prompt",
                 "transformed_system_prompt", "transformed_user_prompt", "raw_response", "transformed_response",
                 "raw_shown_as", "choice", "preference", "reason", "raw_latency_ms", "transformed_latency_ms",
-                "best_model_overall", "best_model_reason", "prompt_ir_json");
+                "best_model_overall", "best_model_reason", "raw_response_chars", "transformed_response_chars",
+                "pipeline_version", "context_options", "context_generator", "selected_context", "prompt_ir_json");
         for (Vote v : votes.findAllWithTrial()) {
             Trial t = v.getTrial();
             Participant p = t.getParticipant();
@@ -50,7 +51,11 @@ public class CsvExportService {
                     raw == null ? null : raw.getResponseText(), tr == null ? null : tr.getResponseText(),
                     raw == null ? null : raw.getDisplayLabel(), v.getChoice(), v.getPreference(), v.getReason(),
                     raw == null ? null : raw.getLatencyMs(), tr == null ? null : tr.getLatencyMs(),
-                    t.getBestProvider(), t.getBestProviderReason(), t.getPromptIrJson());
+                    t.getBestProvider(), t.getBestProviderReason(),
+                    raw == null || raw.getResponseText() == null ? null : raw.getResponseText().length(),
+                    tr == null || tr.getResponseText() == null ? null : tr.getResponseText().length(),
+                    t.getPipelineVersion(), t.getContextOptionsJson(), t.getContextGenerator(), t.getSelectedContext(),
+                    t.getPromptIrJson());
         }
         return sb.toString();
     }
@@ -60,12 +65,14 @@ public class CsvExportService {
     public String responsesCsv() {
         StringBuilder sb = new StringBuilder();
         row(sb, "response_id", "created_at", "trial_id", "task_category", "provider", "model", "condition",
-                "shown_as", "system_prompt", "user_prompt", "response_text", "success", "error", "latency_ms");
+                "shown_as", "system_prompt", "user_prompt", "response_text", "response_chars", "success", "error",
+                "latency_ms", "pipeline_version", "selected_context");
         for (LlmResponse r : responses.findAllWithTrial()) {
             Trial t = r.getTrial();
             row(sb, r.getId(), r.getCreatedAt(), t.getId(), t.getTaskCategory(), r.getProvider(), r.getModel(),
                     r.getCondition(), r.getDisplayLabel(), r.getSystemPrompt(), r.getUserPrompt(),
-                    r.getResponseText(), r.isSuccess(), r.getErrorMessage(), r.getLatencyMs());
+                    r.getResponseText(), r.getResponseText() == null ? null : r.getResponseText().length(),
+                    r.isSuccess(), r.getErrorMessage(), r.getLatencyMs(), t.getPipelineVersion(), t.getSelectedContext());
         }
         return sb.toString();
     }

@@ -46,6 +46,30 @@ public class Trial {
     @Column(length = LONG_TEXT)
     private String transformedPromptsJson;
 
+    /** Pipeline version and disabled layers that produced the transformed prompts (e.g. "2.0"). */
+    @Column(length = 300)
+    private String pipelineVersion;
+
+    /** Clarifying context options offered to the participant (JSON array); null when the step was not shown. */
+    @Column(length = 5_000)
+    private String contextOptionsJson;
+
+    /** Provider id that generated the options, or "rule-based" for the fallback list. */
+    @Column(length = 30)
+    private String contextGenerator;
+
+    /**
+     * Context selected by the participant, or null when skipped. It is given to
+     * BOTH conditions (raw: appended as plain text; transformed: delimited by T8),
+     * so the comparison still isolates prompt structure.
+     */
+    @Column(length = 1_000)
+    private String selectedContext;
+
+    /** False when no provider produced a comparable pair (e.g. all calls failed). */
+    @Column(nullable = false)
+    private boolean usable = true;
+
     /** Comma-separated provider ids in the (shuffled) order shown as Model 1, 2, 3. */
     @Column(length = 120)
     private String providerDisplayOrder;
@@ -105,6 +129,16 @@ public class Trial {
     public void setPromptIrJson(String promptIrJson) { this.promptIrJson = promptIrJson; }
     public String getTransformedPromptsJson() { return transformedPromptsJson; }
     public void setTransformedPromptsJson(String json) { this.transformedPromptsJson = json; }
+    public String getPipelineVersion() { return pipelineVersion; }
+    public void setPipelineVersion(String pipelineVersion) { this.pipelineVersion = pipelineVersion; }
+    public String getContextOptionsJson() { return contextOptionsJson; }
+    public void setContextOptionsJson(String contextOptionsJson) { this.contextOptionsJson = contextOptionsJson; }
+    public String getContextGenerator() { return contextGenerator; }
+    public void setContextGenerator(String contextGenerator) { this.contextGenerator = contextGenerator; }
+    public String getSelectedContext() { return selectedContext; }
+    public void setSelectedContext(String selectedContext) { this.selectedContext = selectedContext; }
+    public boolean isUsable() { return usable; }
+    public void setUsable(boolean usable) { this.usable = usable; }
     public String getProviderDisplayOrder() { return providerDisplayOrder; }
     public void setProviderDisplayOrder(String order) { this.providerDisplayOrder = order; }
     public String getBestProvider() { return bestProvider; }

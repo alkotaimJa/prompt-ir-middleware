@@ -8,21 +8,18 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * T2 — Automatic Role Detection.
+ * T4 – Role Detection.
  * <p>
- * Analyses the raw user message and, when a confident match is found, writes an
- * inferred persona string to {@link PromptIR#setDetectedRole(String)}.  The
- * actual role resolution (explicit &gt; detected &gt; default) is performed by
- * the next step, T3 ({@link RoleConditioningTransformer}).
- * <p>
- * When no pattern matches (or when detection is disabled via
- * {@code pipeline.role.detection.enabled=false}), {@code detectedRole} is left
- * {@code null} so the downstream transformer can distinguish "no detection" from
- * an empty string.
+ * Infers a domain-expert persona from the task type and unambiguous domain
+ * terms (see {@link RoleDetectionService}). Leaves {@code detectedRole} empty
+ * when no persona is justified, because generic personas do not reliably
+ * improve responses.
  */
 @Component
-@Order(2)
+@Order(40)
 public class RoleDetectionTransformer implements PromptTransformer {
+
+    public static final String ID = "role-detection";
 
     private final RoleDetectionService roleDetectionService;
 
@@ -31,8 +28,13 @@ public class RoleDetectionTransformer implements PromptTransformer {
     }
 
     @Override
-    public PromptIR transform(PromptIR ir, ChatRequest originalRequest) {
-        String detected = roleDetectionService.detectRole(ir.getUserInput());
+    public String id() {
+        return ID;
+    }
+
+    @Override
+    public PromptIR transform(PromptIR ir, ChatRequest request) {
+        String detected = roleDetectionService.detectRole(ir.getUserInput(), ir.getTaskType(), ir.getAudience());
         if (detected != null) {
             ir.setDetectedRole(detected);
         }

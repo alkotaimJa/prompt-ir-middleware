@@ -91,7 +91,10 @@ class ExperimentApiIntegrationTest {
         tx.executeWithoutResult(s -> {
             Trial t = trials.findById(trialId).orElseThrow();
             assertThat(t.getRawPrompt()).isEqualTo("What is the difference between REST and SOAP?");
-            assertThat(t.getPromptIrJson()).contains("taskInstruction");
+            assertThat(t.getPromptIrJson()).contains("taskInstruction").contains("FACTUAL_QA");
+            assertThat(t.getPipelineVersion()).startsWith("2.0");
+            assertThat(t.getSelectedContext()).isNull();
+            assertThat(t.isUsable()).isTrue();
             assertThat(t.getTransformedPromptsJson()).contains("systemText");
             assertThat(t.getResponses()).hasSize(6);
             assertThat(t.getVotes()).hasSize(3);
@@ -104,8 +107,8 @@ class ExperimentApiIntegrationTest {
                     assertThat(r.getSystemPrompt()).isNull();
                     assertThat(r.getUserPrompt()).isEqualTo(t.getRawPrompt());
                 } else {
-                    assertThat(r.getSystemPrompt()).startsWith("You are");
-                    assertThat(r.getUserPrompt()).contains("Your task is:");
+                    assertThat(r.getSystemPrompt()).contains("Response guidelines:");
+                    assertThat(r.getUserPrompt()).contains(t.getRawPrompt()).contains("Answer the user's question accurately.");
                 }
             }
             String[] order = t.getProviderDisplayOrder().split(",");
@@ -136,6 +139,74 @@ class ExperimentApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         assertThat(csv).contains("raw_prompt").contains("REST and SOAP");
+    }
+
+    @Test
+    void contextStep_selectedContextIsGivenToBothConditions() throws Exception {
+        String pid = register();
+        String prompt = "Compare agile and waterfall";
+        String body = mvc.perform(post("/api/trials/context-options").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(java.util.Map.of(
+                                "participantId", pid, "taskCategory", "Comparative reasoning", "prompt", prompt))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        JsonNode offer = json.readTree(body);
+        assertThat(offer.get("options").size()).isGreaterThanOrEqualTo(2);
+        String token = offer.get("contextToken").asText();
+        String chosen = offer.get("options").get(1).asText();
+
+        String trialBody = mvc.perform(post("/api/trials").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(java.util.Map.of(
+                                "participantId", pid, "taskCategory", "Comparative reasoning", "prompt", prompt,
+                                "contextToken", token, "selectedContextIndex", 1))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.selectedContext").value(chosen))
+                .andReturn().getResponse().getContentAsString();
+        UUID trialId = UUID.fromString(json.readTree(trialBody).get("trialId").asText());
+
+        tx.executeWithoutResult(s -> {
+            Trial t = trials.findById(trialId).orElseThrow();
+            assertThat(t.getSelectedContext()).isEqualTo(chosen);
+            assertThat(t.getContextGenerator()).isEqualTo("gemini");
+            assertThat(t.getContextOptionsJson()).contains(chosen);
+            for (LlmResponse r : t.getResponses()) {
+                if (r.getCondition() == PromptCondition.RAW) {
+                    assertThat(r.getUserPrompt()).isEqualTo(prompt + "\n\n" + chosen);
+                } else {
+                    assertThat(r.getUserPrompt()).contains(chosen).contains(prompt);
+                }
+            }
+        });
+
+        // A token can only be used once.
+        mvc.perform(post("/api/trials").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(java.util.Map.of(
+                                "participantId", pid, "prompt", prompt, "contextToken", token, "selectedContextIndex", 0))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void contextStep_skippingStoresOptionsButNoContext() throws Exception {
+        String pid = register();
+        String prompt = "Explain how DNS works";
+        String token = json.readTree(mvc.perform(post("/api/trials/context-options").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(java.util.Map.of("participantId", pid, "prompt", prompt))))
+                .andReturn().getResponse().getContentAsString()).get("contextToken").asText();
+
+        String trialBody = mvc.perform(post("/api/trials").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(java.util.Map.of(
+                                "participantId", pid, "prompt", prompt, "contextToken", token, "selectedContextIndex", -1))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        UUID trialId = UUID.fromString(json.readTree(trialBody).get("trialId").asText());
+
+        tx.executeWithoutResult(s -> {
+            Trial t = trials.findById(trialId).orElseThrow();
+            assertThat(t.getSelectedContext()).isNull();
+            assertThat(t.getContextOptionsJson()).isNotBlank();
+            t.getResponses().stream().filter(r -> r.getCondition() == PromptCondition.RAW)
+                    .forEach(r -> assertThat(r.getUserPrompt()).isEqualTo(prompt));
+        });
     }
 
     @Test
@@ -182,6 +253,11 @@ class ExperimentApiIntegrationTest {
     void admin_rejectsWrongToken() throws Exception {
         mvc.perform(get("/api/admin/stats").header("X-Admin-Token", "wrong"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void studyInfo_exposesContextStep() throws Exception {
+        mvc.perform(get("/api/study")).andExpect(jsonPath("$.contextStepEnabled").value(true));
     }
 
     @Test

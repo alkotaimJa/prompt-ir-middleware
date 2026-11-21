@@ -190,3 +190,14 @@ table.data th { font-weight: 600; background: #f6f8fa; }
 .legend i { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 2px; margin-right: 0.35rem; vertical-align: -1px; }
 section.block { margin-bottom: 2rem; }
 .hidden { display: none !important; }
+
+/* ── Context options ─────────────────────────────────── */
+.context-options { display: grid; gap: 0.5rem; }
+.context-options input { position: absolute; opacity: 0; pointer-events: none; }
+.context-options label {
+  margin: 0; font-weight: 400; padding: 0.75rem 0.9rem; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff;
+}
+.context-options input:focus-visible + label { outline: 3px solid #2d7ff9; outline-offset: 2px; }
+.context-options input:checked + label { border-color: var(--a); background: var(--a-soft); box-shadow: inset 3px 0 0 var(--a); }
+.context-options .none { color: var(--muted); }

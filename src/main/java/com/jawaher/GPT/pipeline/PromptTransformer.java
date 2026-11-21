@@ -6,12 +6,21 @@ import com.jawaher.GPT.model.PromptIR;
 /**
  * Single step in the prompt transformation pipeline.
  * <p>
- * Implementations apply one category of the prompt transformation taxonomy to
- * the supplied {@link PromptIR} and return the (possibly mutated) IR for the
- * next step. Ordering is controlled via Spring's {@code @Order} annotation on
- * each implementing class.
+ * Content transformations (T1–T9) apply one prompting technique and can be
+ * switched off individually through {@code pipeline.disabled-layers}, which
+ * supports ablation studies. Infrastructure stages (S1–S3: normalisation,
+ * provider compilation, token budgeting) are always applied. Ordering is
+ * controlled with Spring's {@code @Order}.
  */
 public interface PromptTransformer {
+
+    /** Stable identifier used in configuration, logs and the stored pipeline version. */
+    String id();
+
+    /** Whether this layer may be disabled (true for content transformations). */
+    default boolean optional() {
+        return true;
+    }
 
     /**
      * Applies this transformation step to {@code ir}.

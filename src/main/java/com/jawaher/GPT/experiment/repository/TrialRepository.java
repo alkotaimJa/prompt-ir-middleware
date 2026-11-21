@@ -12,6 +12,8 @@ public interface TrialRepository extends JpaRepository<Trial, UUID> {
 
     long countByParticipantId(UUID participantId);
 
+    long countByParticipantIdAndUsableTrue(UUID participantId);
+
     long countByParticipantIdAndEvaluatedAtIsNotNull(UUID participantId);
 
     long countByEvaluatedAtIsNotNull();

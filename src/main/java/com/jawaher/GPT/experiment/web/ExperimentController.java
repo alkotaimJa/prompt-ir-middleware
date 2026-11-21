@@ -16,6 +16,7 @@ import java.util.UUID;
  * GET  /api/study                      study configuration (task categories, limits)
  * POST /api/participants               register (consent + optional demographics)
  * GET  /api/participants/{id}          progress
+ * POST /api/trials/context-options     optional: clarifying context options for a question
  * POST /api/trials                     run raw vs transformed on all providers (blinded)
  * POST /api/trials/{id}/evaluation     submit votes + reasons + best model
  * </pre>
@@ -44,6 +45,11 @@ public class ExperimentController {
     @GetMapping("/participants/{id}")
     public ParticipantView participant(@PathVariable UUID id) {
         return service.participant(id);
+    }
+
+    @PostMapping("/trials/context-options")
+    public ContextOptionsView contextOptions(@Valid @RequestBody ContextOptionsRequest req, HttpServletRequest http) {
+        return service.contextOptions(req, clientIp(http));
     }
 
     @PostMapping("/trials")

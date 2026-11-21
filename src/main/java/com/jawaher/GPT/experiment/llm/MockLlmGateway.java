@@ -1,5 +1,7 @@
 package com.jawaher.GPT.experiment.llm;
 
+import com.jawaher.GPT.experiment.ExperimentProperties;
+import com.jawaher.GPT.experiment.service.ContextOptionsService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -11,8 +13,22 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "experiment.mock-llm", havingValue = "true")
 public class MockLlmGateway implements LlmGateway {
 
+    private final ExperimentProperties props;
+
+    public MockLlmGateway(ExperimentProperties props) {
+        this.props = props;
+    }
+
     @Override
     public String complete(String provider, String systemPrompt, String userPrompt) {
+        if (props.getMockFailProviders().contains(provider)) {
+            throw new IllegalStateException("HTTP 500 Internal Server Error (simulated failure of " + provider + ")");
+        }
+        if (ContextOptionsService.SYSTEM_PROMPT.equals(systemPrompt)) {
+            return "[\"I am a beginner and need the basics first.\", "
+                    + "\"I am a software engineer looking for practical trade-offs.\", "
+                    + "\"I need a short answer to make a decision today.\"]";
+        }
         // Output deliberately never names the provider or the condition, so the
         // blinded UI can be demonstrated and tested exactly as in production.
         boolean structured = systemPrompt != null && !systemPrompt.isBlank();

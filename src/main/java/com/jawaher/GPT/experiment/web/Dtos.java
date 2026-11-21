@@ -32,10 +32,24 @@ public final class Dtos {
 
     // ── Trials ──────────────────────────────────────────────────────────────
 
-    public record StartTrialRequest(
+    public record ContextOptionsRequest(
             @NotNull UUID participantId,
             @Size(max = 60) String taskCategory,
             @NotBlank String prompt) {
+    }
+
+    /** Clarifying context options; the token identifies them when the trial is started. */
+    public record ContextOptionsView(String contextToken, List<String> options) {
+    }
+
+    public record StartTrialRequest(
+            @NotNull UUID participantId,
+            @Size(max = 60) String taskCategory,
+            @NotBlank String prompt,
+            /** Token from /api/trials/context-options; null when the step was skipped or disabled. */
+            @Size(max = 64) String contextToken,
+            /** Index of the selected option; null or negative = "none of these". */
+            Integer selectedContextIndex) {
     }
 
     /** One blinded response as shown to the participant. */
@@ -46,7 +60,8 @@ public final class Dtos {
     public record ModelPair(int slot, String modelLabel, boolean votable, BlindResponse responseA, BlindResponse responseB) {
     }
 
-    public record TrialView(UUID trialId, String prompt, List<ModelPair> models, long trialsRemaining) {
+    public record TrialView(UUID trialId, String prompt, String selectedContext, List<ModelPair> models,
+                            boolean anyVotable, long trialsRemaining) {
     }
 
     public record VoteRequest(@Min(1) int slot, @NotNull VoteChoice choice, @Size(max = 5000) String reason) {
@@ -64,6 +79,6 @@ public final class Dtos {
     }
 
     public record StudyInfo(boolean accessCodeRequired, List<String> taskCategories, int maxPromptChars,
-                            int minReasonChars, boolean mockMode) {
+                            int minReasonChars, boolean contextStepEnabled, boolean mockMode) {
     }
 }

@@ -27,6 +27,7 @@
   let participantId = store.get("participantId");
   let category = null;
   let trial = null;
+  let pending = null; // { text, contextToken, options }
 
   function show(view) {
     document.querySelectorAll("main > section").forEach(s => s.classList.add("hidden"));
@@ -109,23 +110,82 @@
     $("prompt").value = EXAMPLES[c] || EXAMPLES["Other"];
   });
 
+  function loading(title, text) {
+    $("loading-title").textContent = title;
+    $("loading-text").textContent = text;
+    show("loading");
+  }
+
+  function promptError(text, message, status) {
+    if (status === 404) { store.del("participantId"); participantId = null; }
+    show("prompt");
+    $("prompt").value = text;
+    $("prompt-error").textContent = message;
+  }
+
   $("prompt-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const text = $("prompt").value.trim();
     $("prompt-error").textContent = "";
     if (!category) { $("prompt-error").textContent = "Choose the type of task first."; return; }
     if (!text) { $("prompt-error").textContent = "Type a question to continue."; return; }
-    show("loading");
+    pending = { text, contextToken: null, options: [] };
+    if (!study.contextStepEnabled) { runTrial(-1); return; }
+    loading("Preparing a few options", "This takes a few seconds.");
     try {
-      trial = await api("POST", "/api/trials", { participantId, taskCategory: category, prompt: text });
-      renderTrial();
+      const r = await api("POST", "/api/trials/context-options", { participantId, taskCategory: category, prompt: text });
+      pending.contextToken = r.contextToken;
+      pending.options = r.options;
+      renderContext();
     } catch (err) {
-      if (err.status === 404) { store.del("participantId"); participantId = null; }
-      show("prompt");
-      $("prompt").value = text;
-      $("prompt-error").textContent = err.message;
+      promptError(text, err.message, err.status);
     }
   });
+
+  function renderContext() {
+    $("context-question").textContent = pending.text;
+    $("context-error").textContent = "";
+    const wrap = $("context-options");
+    wrap.innerHTML = "";
+    const opts = pending.options.map((o, i) => [String(i), o, ""]).concat([["-1", "None of these, just answer my question.", "none"]]);
+    opts.forEach(([val, label, cls], i) => {
+      const id = "ctx-" + i;
+      const input = document.createElement("input");
+      input.type = "radio"; input.name = "ctx"; input.id = id; input.value = val;
+      const lab = document.createElement("label");
+      lab.htmlFor = id; lab.textContent = label;
+      if (cls) lab.className = cls;
+      wrap.appendChild(input); wrap.appendChild(lab);
+    });
+    show("context");
+  }
+
+  $("context-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const picked = document.querySelector('input[name="ctx"]:checked');
+    if (!picked) { $("context-error").textContent = "Choose one option, or the last one to skip."; return; }
+    runTrial(Number(picked.value));
+  });
+
+  $("context-options").addEventListener("change", () => { $("context-error").textContent = ""; });
+
+  $("context-back").addEventListener("click", () => { show("prompt"); $("prompt").value = pending.text; });
+
+  async function runTrial(selectedIndex) {
+    loading("Collecting six answers", "Three models are answering in two ways each. This usually takes 15\u201360 seconds.");
+    try {
+      trial = await api("POST", "/api/trials", {
+        participantId, taskCategory: category, prompt: pending.text,
+        contextToken: pending.contextToken, selectedContextIndex: selectedIndex
+      });
+      if (!trial.anyVotable) { show("noresult"); return; }
+      renderTrial();
+    } catch (err) {
+      promptError(pending.text, err.message, err.status);
+    }
+  }
+
+  $("retry").addEventListener("click", () => { show("prompt"); $("prompt").value = pending ? pending.text : ""; });
 
   // ── Compare & vote ──────────────────────────────────────
   function answerCard(resp, side) {
@@ -141,6 +201,9 @@
 
   function renderTrial() {
     $("shown-prompt").textContent = trial.prompt;
+    const sc = $("shown-context");
+    if (trial.selectedContext) { sc.textContent = "Context you added: " + trial.selectedContext; sc.classList.remove("hidden"); }
+    else { sc.classList.add("hidden"); }
     const wrap = $("models");
     wrap.innerHTML = "";
     trial.models.forEach(m => {
@@ -172,7 +235,7 @@
 
     const best = $("best-seg");
     best.innerHTML = "";
-    const opts = trial.models.map(m => [String(m.slot), m.modelLabel]).concat([["0", "None of them"]]);
+    const opts = trial.models.filter(m => m.votable).map(m => [String(m.slot), m.modelLabel]).concat([["0", "None of them"]]);
     opts.forEach(([val, label], i) => {
       best.insertAdjacentHTML("beforeend",
         '<input type="radio" id="best-' + i + '" name="best" value="' + val + '">' +

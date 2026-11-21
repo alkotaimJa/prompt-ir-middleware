@@ -39,6 +39,18 @@ public class ExperimentProperties {
     /** Minimum length of a participant's reason for each vote (0 = optional). */
     private int minReasonChars = 3;
 
+    /** Whether participants are offered clarifying context options before the answers are generated. */
+    private boolean contextStepEnabled = true;
+
+    /** Providers tried, in order, to generate context options (falls back to rule-based options). */
+    private List<String> contextGeneratorProviders = new ArrayList<>(List.of("gemini", "openai", "claude"));
+
+    /** Timeout for each context-generation call, in seconds. */
+    private int contextTimeoutSeconds = 20;
+
+    /** Mock mode only: providers whose calls fail with a simulated HTTP 500 (for demos and tests). */
+    private List<String> mockFailProviders = new ArrayList<>();
+
     public boolean isMockLlm() { return mockLlm; }
     public void setMockLlm(boolean mockLlm) { this.mockLlm = mockLlm; }
     public String getAccessCode() { return accessCode; }
@@ -57,4 +69,12 @@ public class ExperimentProperties {
     public void setCallTimeoutSeconds(int callTimeoutSeconds) { this.callTimeoutSeconds = callTimeoutSeconds; }
     public int getMinReasonChars() { return minReasonChars; }
     public void setMinReasonChars(int minReasonChars) { this.minReasonChars = minReasonChars; }
+    public boolean isContextStepEnabled() { return contextStepEnabled; }
+    public void setContextStepEnabled(boolean contextStepEnabled) { this.contextStepEnabled = contextStepEnabled; }
+    public List<String> getContextGeneratorProviders() { return contextGeneratorProviders; }
+    public void setContextGeneratorProviders(List<String> v) { this.contextGeneratorProviders = v; }
+    public int getContextTimeoutSeconds() { return contextTimeoutSeconds; }
+    public void setContextTimeoutSeconds(int contextTimeoutSeconds) { this.contextTimeoutSeconds = contextTimeoutSeconds; }
+    public List<String> getMockFailProviders() { return mockFailProviders; }
+    public void setMockFailProviders(List<String> mockFailProviders) { this.mockFailProviders = mockFailProviders; }
 }

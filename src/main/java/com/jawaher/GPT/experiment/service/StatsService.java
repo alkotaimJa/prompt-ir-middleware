@@ -56,6 +56,7 @@ public class StatsService {
                             PreferenceStats overall,
                             Map<String, PreferenceStats> byProvider,
                             Map<String, PreferenceStats> byTaskCategory,
+                            Map<String, PreferenceStats> byContext,
                             Map<String, Long> bestModelCounts,
                             List<CallStats> calls,
                             List<ReasonView> recentReasons) {
@@ -68,6 +69,11 @@ public class StatsService {
         Map<String, PreferenceStats> byProvider = group(all, Vote::getProvider);
         Map<String, PreferenceStats> byCategory = group(all,
                 v -> Optional.ofNullable(v.getTrial().getTaskCategory()).orElse("Other"));
+
+        Map<String, PreferenceStats> byContext = group(all,
+                v -> v.getTrial().getSelectedContext() != null ? "With selected context"
+                        : v.getTrial().getContextOptionsJson() != null ? "Context offered, skipped"
+                        : "No context step");
 
         Map<String, Long> best = trials.findAllWithParticipant().stream()
                 .filter(Trial::isEvaluated)
@@ -96,7 +102,7 @@ public class StatsService {
                 .toList();
 
         return new StatsView(participants.count(), trials.count(), trials.countByEvaluatedAtIsNotNull(),
-                all.size(), summarise(all), byProvider, byCategory, best, calls, reasons);
+                all.size(), summarise(all), byProvider, byCategory, byContext, best, calls, reasons);
     }
 
     private static Map<String, PreferenceStats> group(List<Vote> all, Function<Vote, String> key) {

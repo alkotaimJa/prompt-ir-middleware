@@ -59,6 +59,7 @@ public class ExperimentService {
     private final Executor executor;
     private final ObjectMapper json;
     private final RateLimiter rateLimiter;
+    private final ContextOptionsService contextOptions;
     private final Random random = new SecureRandom();
 
     public ExperimentService(PromptPipeline pipeline,
@@ -68,7 +69,8 @@ public class ExperimentService {
                              ExperimentProperties props,
                              @Qualifier("llmTaskExecutor") Executor executor,
                              ObjectMapper json,
-                             RateLimiter rateLimiter) {
+                             RateLimiter rateLimiter,
+                             ContextOptionsService contextOptions) {
         this.pipeline = pipeline;
         this.llm = llm;
         this.participants = participants;
@@ -77,13 +79,14 @@ public class ExperimentService {
         this.executor = executor;
         this.json = json;
         this.rateLimiter = rateLimiter;
+        this.contextOptions = contextOptions;
     }
 
     // ── Study info & participants ───────────────────────────────────────────
 
     public StudyInfo studyInfo() {
         return new StudyInfo(!isBlank(props.getAccessCode()), TASK_CATEGORIES,
-                props.getMaxPromptChars(), props.getMinReasonChars(), props.isMockLlm());
+                props.getMaxPromptChars(), props.getMinReasonChars(), props.isContextStepEnabled(), props.isMockLlm());
     }
 
     @Transactional
@@ -105,15 +108,114 @@ public class ExperimentService {
         Participant p = participants.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown participant."));
         return new ParticipantView(p.getId(),
-                trials.countByParticipantId(id),
+                trials.countByParticipantIdAndUsableTrue(id),
                 trials.countByParticipantIdAndEvaluatedAtIsNotNull(id),
                 props.getMaxTrialsPerParticipant());
     }
 
     // ── Trials ──────────────────────────────────────────────────────────────
 
+    // ── Clarifying context (optional step before a trial) ──────────────────
+
+    public ContextOptionsView contextOptions(ContextOptionsRequest req, String clientIp) {
+        if (!props.isContextStepEnabled()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "The context step is disabled for this study.");
+        }
+        String prompt = validatePrompt(req.prompt());
+        Participant participant = participants.findById(req.participantId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown participant. Please register again."));
+        ensureUnderCap(participant);
+        if (!rateLimiter.tryAcquire("ctx:" + clientIp)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "Too many requests. Please try again later.");
+        }
+        Map.Entry<String, ContextOptionsService.Offer> offer =
+                contextOptions.offer(participant.getId(), prompt, normaliseCategory(req.taskCategory()));
+        return new ContextOptionsView(offer.getKey(), offer.getValue().options());
+    }
+
+    // ── Trials ──────────────────────────────────────────────────────────────
+
     public TrialView startTrial(StartTrialRequest req, String clientIp) {
-        String prompt = req.prompt() == null ? "" : req.prompt().strip();
+        String prompt = validatePrompt(req.prompt());
+        Participant participant = participants.findById(req.participantId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown participant. Please register again."));
+        long usableSoFar = ensureUnderCap(participant);
+        if (!rateLimiter.tryAcquire(clientIp)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "Too many requests. Please try again later.");
+        }
+
+        String category = normaliseCategory(req.taskCategory());
+        Trial trial = new Trial(participant, category, prompt);
+
+        // 0) Clarifying context: resolved from the server-side offer, applied to BOTH conditions.
+        String context = null;
+        if (req.contextToken() != null && !req.contextToken().isBlank()) {
+            ContextOptionsService.Offer offer = contextOptions.take(req.contextToken())
+                    .filter(o -> o.participantId().equals(participant.getId()) && o.prompt().equals(prompt))
+                    .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT,
+                            "The context options have expired. Please submit your question again."));
+            trial.setContextOptionsJson(toJson(offer.options()));
+            trial.setContextGenerator(offer.generator());
+            Integer idx = req.selectedContextIndex();
+            if (idx != null && idx >= 0) {
+                if (idx >= offer.options().size()) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid context option.");
+                }
+                context = offer.options().get(idx);
+            }
+        }
+        trial.setSelectedContext(context);
+
+        // 1) Transformation: raw prompt → Prompt IR → provider-specific compiled prompts.
+        ChatRequest chatRequest = new ChatRequest();
+        chatRequest.setMessage(prompt);
+        chatRequest.setTaskType(category);
+        chatRequest.setContext(context);
+        PromptIR ir = pipeline.process(chatRequest);
+        trial.setPipelineVersion(pipeline.versionTag());
+        trial.setPromptIrJson(toJson(irSnapshot(ir)));
+        trial.setTransformedPromptsJson(toJson(ir.getCompiledPrompts()));
+
+        // The raw condition receives the same information, as plain text the way a user would add it.
+        String rawUserPrompt = context == null ? prompt : prompt + "\n\n" + context;
+
+        // 2) Blinding: shuffle provider order and A/B position per provider.
+        List<String> providers = new ArrayList<>(props.getProviders());
+        Collections.shuffle(providers, random);
+        trial.setProviderDisplayOrder(String.join(",", providers));
+
+        List<CompletableFuture<Void>> calls = new ArrayList<>();
+        for (String provider : providers) {
+            CompiledPrompt compiled = ir.getCompiledPrompts().get(provider);
+            boolean rawIsA = random.nextBoolean();
+            LlmResponse raw = new LlmResponse(trial, provider, llm.modelFor(provider), PromptCondition.RAW,
+                    null, rawUserPrompt, rawIsA ? "A" : "B");
+            LlmResponse transformed = new LlmResponse(trial, provider, llm.modelFor(provider), PromptCondition.TRANSFORMED,
+                    compiled == null ? null : compiled.systemText(),
+                    compiled == null ? prompt : compiled.userText(), rawIsA ? "B" : "A");
+            trial.addResponse(raw);
+            trial.addResponse(transformed);
+            calls.add(execute(raw));
+            if (compiled == null) {
+                log.error("No prompt compiler registered for provider {}", provider);
+                transformed.recordFailure("No prompt compiler registered for provider " + provider, 0);
+            } else {
+                calls.add(execute(transformed));
+            }
+        }
+
+        // 3) Execute all calls concurrently. Each call handles its own failure or timeout,
+        //    so one provider returning HTTP 500 never affects the others.
+        CompletableFuture.allOf(calls.toArray(CompletableFuture[]::new)).join();
+
+        boolean anyVotable = providers.stream().anyMatch(p -> votable(trial, p));
+        trial.setUsable(anyVotable);
+        trials.save(trial);
+        return toView(trial, providers, anyVotable ? usableSoFar + 1 : usableSoFar);
+    }
+
+    private String validatePrompt(String raw) {
+        String prompt = raw == null ? "" : raw.strip();
         if (prompt.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Please enter a prompt.");
         }
@@ -121,54 +223,26 @@ public class ExperimentService {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Prompt is too long (max " + props.getMaxPromptChars() + " characters).");
         }
-        Participant participant = participants.findById(req.participantId())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown participant. Please register again."));
-        long started = trials.countByParticipantId(participant.getId());
-        if (started >= props.getMaxTrialsPerParticipant()) {
+        return prompt;
+    }
+
+    /** Returns the number of usable trials so far; throws when the participant reached the cap. */
+    private long ensureUnderCap(Participant participant) {
+        long usable = trials.countByParticipantIdAndUsableTrue(participant.getId());
+        if (usable >= props.getMaxTrialsPerParticipant()) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS,
                     "You have reached the maximum number of prompts for this study. Thank you!");
         }
-        if (!rateLimiter.tryAcquire(clientIp)) {
-            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "Too many requests. Please try again later.");
-        }
+        return usable;
+    }
 
-        String category = TASK_CATEGORIES.contains(req.taskCategory()) ? req.taskCategory() : "Other";
-        Trial trial = new Trial(participant, category, prompt);
+    private static String normaliseCategory(String category) {
+        // List.of(...).contains(null) throws, so null is checked first.
+        return category != null && TASK_CATEGORIES.contains(category) ? category : "Other";
+    }
 
-        // 1) Transformation: raw prompt → Prompt IR → provider-specific compiled prompts.
-        ChatRequest chatRequest = new ChatRequest();
-        chatRequest.setMessage(prompt);
-        PromptIR ir = pipeline.process(chatRequest);
-        trial.setPromptIrJson(toJson(irSnapshot(ir)));
-        trial.setTransformedPromptsJson(toJson(ir.getCompiledPrompts()));
-
-        // 2) Blinding: shuffle provider order and A/B position per provider.
-        List<String> providers = new ArrayList<>(props.getProviders());
-        Collections.shuffle(providers, random);
-        trial.setProviderDisplayOrder(String.join(",", providers));
-
-        Map<LlmResponse, CompletableFuture<Void>> calls = new LinkedHashMap<>();
-        for (String provider : providers) {
-            CompiledPrompt compiled = ir.getCompiledPrompts().get(provider);
-            if (compiled == null) {
-                throw new IllegalStateException("No compiler registered for provider " + provider);
-            }
-            boolean rawIsA = random.nextBoolean();
-            LlmResponse raw = new LlmResponse(trial, provider, llm.modelFor(provider), PromptCondition.RAW,
-                    null, prompt, rawIsA ? "A" : "B");
-            LlmResponse transformed = new LlmResponse(trial, provider, llm.modelFor(provider), PromptCondition.TRANSFORMED,
-                    compiled.systemText(), compiled.userText(), rawIsA ? "B" : "A");
-            trial.addResponse(raw);
-            trial.addResponse(transformed);
-            calls.put(raw, execute(raw));
-            calls.put(transformed, execute(transformed));
-        }
-
-        // 3) Execute all 2×N calls concurrently and wait for every one to finish.
-        CompletableFuture.allOf(calls.values().toArray(CompletableFuture[]::new)).join();
-
-        trials.save(trial);
-        return toView(trial, providers, started + 1);
+    private static boolean votable(Trial trial, String provider) {
+        return cell(trial, provider, "A").isSuccess() && cell(trial, provider, "B").isSuccess();
     }
 
     private CompletableFuture<Void> execute(LlmResponse cell) {
@@ -192,7 +266,7 @@ public class ExperimentService {
                 });
     }
 
-    private TrialView toView(Trial trial, List<String> providerOrder, long startedSoFar) {
+    private TrialView toView(Trial trial, List<String> providerOrder, long usableSoFar) {
         List<ModelPair> pairs = new ArrayList<>();
         for (int i = 0; i < providerOrder.size(); i++) {
             String provider = providerOrder.get(i);
@@ -201,8 +275,9 @@ public class ExperimentService {
             boolean votable = a.isSuccess() && b.isSuccess();
             pairs.add(new ModelPair(i + 1, "Model " + (i + 1), votable, blind(a), blind(b)));
         }
-        long remaining = Math.max(0, props.getMaxTrialsPerParticipant() - startedSoFar);
-        return new TrialView(trial.getId(), trial.getRawPrompt(), pairs, remaining);
+        long remaining = Math.max(0, props.getMaxTrialsPerParticipant() - usableSoFar);
+        return new TrialView(trial.getId(), trial.getRawPrompt(), trial.getSelectedContext(), pairs,
+                trial.isUsable(), remaining);
     }
 
     private static BlindResponse blind(LlmResponse r) {
@@ -229,6 +304,9 @@ public class ExperimentService {
         }
         if (trial.isEvaluated()) {
             throw new ApiException(HttpStatus.CONFLICT, "This trial has already been evaluated.");
+        }
+        if (!trial.isUsable()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "None of the models answered this question, so there is nothing to rate.");
         }
 
         List<String> order = Arrays.asList(trial.getProviderDisplayOrder().split(","));
@@ -268,7 +346,7 @@ public class ExperimentService {
         String best;
         if (req.bestSlot() == 0) {
             best = "none";
-        } else if (req.bestSlot() <= order.size()) {
+        } else if (req.bestSlot() <= order.size() && votable(trial, order.get(req.bestSlot() - 1))) {
             best = order.get(req.bestSlot() - 1);
         } else {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid best model.");
@@ -277,7 +355,7 @@ public class ExperimentService {
         trials.save(trial);
 
         UUID pid = trial.getParticipant().getId();
-        long started = trials.countByParticipantId(pid);
+        long started = trials.countByParticipantIdAndUsableTrue(pid);
         long evaluated = trials.countByParticipantIdAndEvaluatedAtIsNotNull(pid);
         return new EvaluationResult(trial.getId(), recorded, evaluated,
                 Math.max(0, props.getMaxTrialsPerParticipant() - started));
@@ -288,12 +366,20 @@ public class ExperimentService {
     private static Map<String, Object> irSnapshot(PromptIR ir) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("userInput", ir.getUserInput());
+        m.put("taskType", ir.getTaskType() == null ? null : ir.getTaskType().name());
+        m.put("audience", ir.getAudience());
+        m.put("constraints", ir.getConstraints());
         m.put("taskInstruction", ir.getTaskInstruction());
-        m.put("role", ir.getRole());
+        m.put("successCriteria", ir.getSuccessCriteria());
         m.put("detectedRole", ir.getDetectedRole());
+        m.put("role", ir.getRole());
         m.put("outputFormat", ir.getOutputFormat());
+        m.put("formatDirective", ir.getFormatDirective());
+        m.put("lengthGuidance", ir.getLengthGuidance());
         m.put("contextBlock", ir.getContextBlock());
+        m.put("responseGuidelines", ir.getResponseGuidelines());
         m.put("tokenBudget", ir.getTokenBudget());
+        m.put("appliedLayers", ir.getAppliedLayers());
         return m;
     }
 

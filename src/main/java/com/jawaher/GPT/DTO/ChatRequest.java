@@ -38,6 +38,13 @@ public class ChatRequest {
      */
     private Integer maxTokens;
 
+    /**
+     * Optional. Task category (e.g. {@code "Comparative reasoning"} or
+     * {@code "COMPARATIVE"}) used by T1 (Task Classification). When absent the
+     * task type is inferred from the message.
+     */
+    private String taskType;
+
     public String getMessage() {
         return message;
     }
@@ -76,5 +83,13 @@ public class ChatRequest {
 
     public void setMaxTokens(Integer maxTokens) {
         this.maxTokens = maxTokens;
+    }
+
+    public String getTaskType() {
+        return taskType;
+    }
+
+    public void setTaskType(String taskType) {
+        this.taskType = taskType;
     }
 }
