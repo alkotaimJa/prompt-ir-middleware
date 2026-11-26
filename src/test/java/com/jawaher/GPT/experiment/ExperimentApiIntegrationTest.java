@@ -264,5 +264,6 @@ class ExperimentApiIntegrationTest {
     void frontendIsServed() throws Exception {
         mvc.perform(get("/index.html")).andExpect(status().isOk());
         mvc.perform(get("/admin.html")).andExpect(status().isOk());
+        mvc.perform(get("/admin")).andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/admin.html"));
     }
 }

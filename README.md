@@ -149,7 +149,7 @@ Notes: free web services sleep after inactivity (the first visit then takes abou
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENAI_KEY`, `ANTHROPIC_KEY`, `GEMINI_KEY` | – | provider API keys |
-| `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL` | gpt-4o, claude-opus-4-5, gemini-2.5-flash | model ids (stored with every response) |
+| `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL` | gpt-4o, claude-opus-4-5, gemini-3.8-flash | model ids (stored with every response) |
 | `DATABASE_URL` | local H2 | `postgres://user:pass@host:5432/db` |
 | `ADMIN_TOKEN` | – (admin API disabled) | protects results and exports |
 | `EXPERIMENT_ACCESS_CODE` | – (open) | code participants must enter |
