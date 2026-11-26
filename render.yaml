@@ -33,6 +33,6 @@ services:
       - key: ANTHROPIC_MODEL
         value: claude-opus-4-5
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.8-flash
       - key: JAVA_OPTS
         value: "-XX:MaxRAMPercentage=75 -XX:+UseSerialGC"

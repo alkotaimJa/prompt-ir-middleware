@@ -103,7 +103,10 @@
       await load();
       try { sessionStorage.setItem("adminToken", token); } catch (x) { /* storage unavailable */ }
     } catch (err) {
-      $("login-error").textContent = err.message;
+      let hint = "";
+      if (/disabled/i.test(err.message)) hint = " Set ADMIN_TOKEN in the service's environment variables and redeploy.";
+      else if (/invalid admin token/i.test(err.message)) hint = " Copy the ADMIN_TOKEN value from the service's Environment settings (Render: Environment tab, reveal the value).";
+      $("login-error").textContent = err.message + hint;
     }
   });
   $("refresh").addEventListener("click", () => load().catch(e => alert(e.message)));
